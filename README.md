@@ -29,11 +29,11 @@ Animate the content back to its default position and scale; reset the pointer tr
 
 `setZoom(targetScale:number,originX:number,originY:number,animate=false,center=false)`
 Immediately set the zoom of the element. Calls to this while gesturing are ignored. 
-- `targetScale` the scale to end up at
-- `originX` where to zoom into
-- `originY` where to zoom into
-- `animate` should animate change? Default is `false`.
-- `center` move the content so that the origin is in the middle of the zoom-panel element. Default is `false`.
+- `targetScale` The scale to end up at, where 1 is 100%.
+- `originX` The x coordinate of the content to zoom into.
+- `originY` The x coordinate of the content to zoom into.
+- `animate` Should the change be animated? Default is `false`.
+- `center` Move the content so that the `originX` and `originY` are in the middle of the zoom-panel element. Default is `false`.
 
 
 ## Events
