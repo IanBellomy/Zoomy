@@ -24,7 +24,7 @@
 
 ## Methods
 
-— `clearZoom` animate the content back to its default position and scale; reset the pointer tracking cache. I recommend providing some way for a user to trigger this. (See warning.)
+`clearZoom` animate the content back to its default position and scale; reset the pointer tracking cache. I recommend providing some way for a user to trigger this. (See warning.)
 
 ## Events
 Zoom-Panel emits the following custom events:
