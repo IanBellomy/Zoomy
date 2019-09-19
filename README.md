@@ -24,7 +24,17 @@
 
 ## Methods
 
-`clearZoom` animate the content back to its default position and scale; reset the pointer tracking cache. I recommend providing some way for a user to trigger this. (See warning.)
+`clearZoom()` 
+Animate the content back to its default position and scale; reset the pointer tracking cache. I recommend providing some way for a user to trigger this. (See warning.)
+
+`setZoom(targetScale:number,originX:number,originY:number,animate=false,center=false)`
+Immediately set the zoom of the element. Calls to this while gesturing are ignored. 
+- `targetScale` the scale to end up at
+- `originX` where to zoom into
+- `originY` where to zoom into
+- `animate` should animate change? Default is `false`.
+- `center` move the content so that the origin is in the middle of the zoom-panel element. Default is `false`.
+
 
 ## Events
 Zoom-Panel emits the following custom events:
