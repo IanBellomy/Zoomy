@@ -22,7 +22,7 @@
 **Warning**: 
 - If children or parent elements of zoom-panel capture `pointerup` events, the gesture tracking can *break*! If you've got ways of making the pointerID caching/tracking more bullet proof, I'm all ears, but for now, I can't guarantee this thing will act independently of what you put in it or what you put it in. *Sad*.
 
-# Events
+## Events
 Zoom-Panel emits the following custom events:
 
 - `manipulationStart` when a pan or pinch starts while there was no gesture.
