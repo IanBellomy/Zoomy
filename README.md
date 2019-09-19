@@ -4,14 +4,6 @@
 
 **Demo**: https://ianbellomy.github.io/Zoomy/deploy/
 
-**Use**: 
-````HTML
-<zoom-panel>
-	<!-- content you want to manipulate --!>
-</zoom-panel>
-<script type="module" src="ZoomPanel.js"></script>
-````
-
 **Notes**: 
 - Uses [PointerEvents](https://caniuse.com/#feat=pointer). 
 - The contents are not constrained to the viewing area.
