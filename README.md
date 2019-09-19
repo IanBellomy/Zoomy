@@ -4,6 +4,14 @@
 
 **Demo**: https://ianbellomy.github.io/Zoomy/deploy/
 
+**Use**: 
+````HTML
+<zoom-panel>
+	<!-- content you want to manipulate --!>
+</zoom-panel>
+<script type="module" src="ZoomPanel.js"></script>
+````
+
 **Notes**: 
 - Uses [PointerEvents](https://caniuse.com/#feat=pointer). 
 - The contents are not constrained to the viewing area.
@@ -12,4 +20,14 @@
 
 
 **Warning**: 
-- If children or parent elements of zoom-panel capture pointerup events, the gesture tracking can *break*. If you've got ways of making the pointerID caching/tracking more bullet proof, I'm all ears.
+- If children or parent elements of zoom-panel capture `pointerup` events, the gesture tracking can *break*! If you've got ways of making the pointerID caching/tracking more bullet proof, I'm all ears, but for now, I can't guarantee this thing will act independently of what you put in it or what you put it in. *Sad*.
+
+# Events
+Zoom-Panel emits the following custom events:
+
+- `manipulationStart` when a pan or pinch starts while there was no gesture.
+- `panStart` 
+- `panEnd`
+- `pinchStart`
+- `pinchEnd`
+- `manipulationEnd` when some a gesture ends without switching to a different gesture, e.g. putting a second finger down triggers `panEnd` but not `manipulationEnd`.
