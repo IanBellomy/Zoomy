@@ -17,6 +17,7 @@
 - The contents are not constrained to the viewing area.
 - Doesn't do tossing/flicking.
 - If user leaves image zoomed out / scaled down, default behavior is to recenter and zoom to 1x.
+- No dependencies. (Though you might need a polyfil for PointerEvents.)
 
 
 **Warning**: 
