@@ -20,8 +20,12 @@
 
 
 **Warning**: 
-- If children or parent elements of zoom-panel capture `pointerup` events, the gesture tracking can *break*! If you've got ways of making the pointerID caching/tracking more bullet proof, I'm all ears, but for now, I can't guarantee this thing will act independently of what you put in it or what you put it in. *Sad*.
+- If children or parent elements of zoom-panel capture `pointerup` events, the gesture tracking can *break!* If you've got ways of making the pointerID caching/tracking more bullet proof, I'm all ears, but for now, I can't guarantee this thing will behave entirely independently of what you put in it or what you put it in. As such, I recommend finding some way to sneak in `zoomPanel.clearZoom()` where it make sense; this will clear the pointer cache an unstick a gesture that won't quit because a pointer up was swallowed somewhere. 
 
+
+## Methods
+
+— `clearZoom` animate the content back to its default position and scale; reset the pointer tracking cache. I recommend providing some way for a user to trigger this. (See warning.)
 
 ## Events
 Zoom-Panel emits the following custom events:
