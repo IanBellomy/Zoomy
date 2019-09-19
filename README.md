@@ -17,9 +17,9 @@
 ## Events
 Zoom-Panel emits the following custom events:
 
-- `manipulationStart` when a pan or pinch starts while there was no gesture.
+- `manipulationStart` when a pan or pinch starts while there was no gesture, e.g. putting a second finger down while panning triggers `pinchStart` but not `manipulationStart`.
 - `panStart` 
 - `panEnd`
 - `pinchStart`
 - `pinchEnd`
-- `manipulationEnd` when some a gesture ends without switching to a different gesture, e.g. putting a second finger down triggers `panEnd` but not `manipulationEnd`.
+- `manipulationEnd` when some gesture ends without switching to a different gesture, e.g. putting a second finger down triggers `panEnd` but not `manipulationEnd`.
