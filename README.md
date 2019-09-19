@@ -15,7 +15,7 @@
 ```HTML
 <script type="module" src="ZoomPanel.js"></script>
 <zoom-panel style="touch-action:none">
-	<!-- stuff you want to manipulate --!>
+	<!-- stuff you want to manipulate -->
 </zoom-panel>
 ```
 
