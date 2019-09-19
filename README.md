@@ -4,14 +4,7 @@
 
 **Demo**: https://ianbellomy.github.io/Zoomy/deploy/
 
-**Notes**: 
-- Uses [PointerEvents](https://caniuse.com/#feat=pointer). 
-- The contents are not constrained to the viewing area.
-- Doesn't do tossing/flicking.
-- If user leaves image zoomed out / scaled down, default behavior is to recenter and zoom to 1x.
-
-
-**Use**
+**Use**:
 ```HTML
 <script type="module" src="ZoomPanel.js"></script>
 <zoom-panel style="touch-action:none">
@@ -19,8 +12,16 @@
 </zoom-panel>
 ```
 
+**Notes**: 
+- Uses [PointerEvents](https://caniuse.com/#feat=pointer). 
+- The contents are not constrained to the viewing area.
+- Doesn't do tossing/flicking.
+- If user leaves image zoomed out / scaled down, default behavior is to recenter and zoom to 1x.
+
+
 **Warning**: 
 - If children or parent elements of zoom-panel capture `pointerup` events, the gesture tracking can *break*! If you've got ways of making the pointerID caching/tracking more bullet proof, I'm all ears, but for now, I can't guarantee this thing will act independently of what you put in it or what you put it in. *Sad*.
+
 
 ## Events
 Zoom-Panel emits the following custom events:
