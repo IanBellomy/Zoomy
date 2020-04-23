@@ -16,6 +16,7 @@ class ZoomPanel extends HTMLElement {
         this.lastPointTime = undefined;
         this.lastPointPos = { x: 0, y: 0 };
         this.doubleTapTime = 300;
+        this.centerOnDoubleTap = false;
         this.mouseWheelTimoutID = undefined;
         this.clearZoomTimeoutID = undefined;
     }
@@ -137,7 +138,7 @@ class ZoomPanel extends HTMLElement {
     handleMouseWheel(e) {
         let targetScale = this.scale - e.deltaY / 750;
         this.style.transition = "none";
-        this.setZoom(targetScale, e.clientX - this.boundingBox.left, e.clientY - this.boundingBox.top);
+        this.doPinch(targetScale, e.clientX - this.boundingBox.left, e.clientY - this.boundingBox.top);
         if (this.mouseWheelTimoutID)
             clearTimeout(this.mouseWheelTimoutID);
         else
@@ -153,7 +154,7 @@ class ZoomPanel extends HTMLElement {
         else {
             let x = e.clientX;
             let y = e.clientY;
-            this.setZoom(2, x - this.boundingBox.left, y - this.boundingBox.top, true, true);
+            this.doPinch(2, x - this.boundingBox.left, y - this.boundingBox.top, true, this.centerOnDoubleTap);
         }
     }
     pinchStart(e) {
@@ -268,21 +269,21 @@ class ZoomPanel extends HTMLElement {
     get zoomOrigin() {
         return Object.freeze(Object.apply({}, this.origin));
     }
-    setZoom(targetScale, originX, originY, animate = false, center = false) {
+    doPinch(withScale, atX, atY, animate = false, center = false) {
         if (this.gesturing) {
             console.warn("ZoomPanel:: can't set zoom while gesturing");
             return;
         }
         this.style.transition = animate ? "transform 0.65s" : "none";
         this.initialCenter = {
-            x: originX,
-            y: originY
+            x: atX,
+            y: atY
         };
         this.initialDistance = 100;
-        this.pinchDistance = 100 + 100 * (targetScale - this.scale);
+        this.pinchDistance = 100 + 100 * (withScale - this.scale);
         this.pinchScale = (this.pinchDistance / this.initialDistance);
-        let newCenterX = center ? this.boundingBox.width / 2 : originX;
-        let newCenterY = center ? this.boundingBox.height / 2 : originY;
+        let newCenterX = center ? this.boundingBox.width / 2 : atX;
+        let newCenterY = center ? this.boundingBox.height / 2 : atY;
         this.gesturePositionChange.x = newCenterX - this.initialCenter.x * this.pinchScale;
         this.gesturePositionChange.y = newCenterY - this.initialCenter.y * this.pinchScale;
         let absoluteScale = this.pinchScale * this.initialScale;
@@ -298,6 +299,46 @@ class ZoomPanel extends HTMLElement {
         this.initialScale *= this.pinchScale;
         this.initialGesturePosition.x = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x;
         this.initialGesturePosition.y = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y;
+    }
+    pinchTo(scale, atX, atY, animate = false, center = false) {
+        this.style.transition = animate ? "transform 0.65s" : "none";
+        this.initialCenter = {
+            x: atX,
+            y: atY
+        };
+        this.scale = 1;
+        this.initialScale = 1;
+        this.initialDistance = 100;
+        this.initialGesturePosition.x = 0;
+        this.initialGesturePosition.y = 0;
+        this.initialDistance = 100;
+        this.pinchDistance = 100 + 100 * (scale - this.scale);
+        this.pinchScale = (this.pinchDistance / this.initialDistance);
+        let newCenterX = center ? this.boundingBox.width / 2 : atX;
+        let newCenterY = center ? this.boundingBox.height / 2 : atY;
+        this.gesturePositionChange.x = newCenterX - this.initialCenter.x * this.pinchScale;
+        this.gesturePositionChange.y = newCenterY - this.initialCenter.y * this.pinchScale;
+        let absoluteScale = this.pinchScale * this.initialScale;
+        let absoluteOffsetX = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale;
+        let absoluteOffsetY = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale;
+        this.style.transform = `translate(${absoluteOffsetX}px, ${absoluteOffsetY}px) scale(${absoluteScale})`;
+        this.style.transformOrigin = `0 0`;
+        this.scale = absoluteScale;
+        this.origin.x = newCenterX;
+        this.origin.y = newCenterY;
+        this.initialCenter.x = 0;
+        this.initialCenter.y = 0;
+        this.initialScale *= this.pinchScale;
+        this.initialGesturePosition.x = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x;
+        this.initialGesturePosition.y = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y;
+    }
+    frame(rect) {
+        let x = rect.left + rect.width / 2;
+        let y = rect.top + rect.height / 2;
+        let maxWidthScale = this.boundingBox.width / rect.width;
+        let maxHeightScale = this.boundingBox.height / rect.height;
+        let scale = Math.min(maxWidthScale, maxHeightScale);
+        this.pinchTo(scale, x, y, true, true);
     }
     clearZoom() {
         this.pointers.length = 0;

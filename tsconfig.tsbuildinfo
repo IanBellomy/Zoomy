@@ -86,8 +86,8 @@
         "signature": "28569d59e07d4378cb3d54979c4c60f9f06305c9bb6999ffe6cab758957adc46"
       },
       "./src/zoompanel.ts": {
-        "version": "ecb5662b4300b3eec8a136542b82e10ba75eace287166cbf5a0a953396f24129",
-        "signature": "4b2f90b2f8c61530866f687149d14569ea4884ea8ca6eca63a8f41ea8a86b0f2"
+        "version": "50e395484568ef77a9d34c2de40f498865985db397a9f32a18190acd1c9bc211",
+        "signature": "3b74bedf975fd5958abf8203f881bb80be1d1354b3a308206df69a595a3bdc9b"
       }
     },
     "options": {
@@ -109,11 +109,10 @@
     "referencedMap": {},
     "exportedModulesMap": {},
     "semanticDiagnosticsPerFile": [
-      "./src/zoompanel.ts",
+      "../../../../usr/local/lib/node_modules/typescript/lib/lib.es5.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2015.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2016.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2017.d.ts",
-      "../../../../usr/local/lib/node_modules/typescript/lib/lib.es5.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.dom.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.dom.iterable.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2015.core.d.ts",
@@ -130,7 +129,8 @@
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2017.sharedmemory.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2017.string.d.ts",
       "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2017.intl.d.ts",
-      "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2017.typedarrays.d.ts"
+      "../../../../usr/local/lib/node_modules/typescript/lib/lib.es2017.typedarrays.d.ts",
+      "./src/zoompanel.ts"
     ]
   },
   "version": "3.8.3"

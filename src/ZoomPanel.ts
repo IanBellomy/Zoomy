@@ -3,6 +3,13 @@ interface Point{
     y:number
 } 
 
+interface Rect{
+    top:number,
+    left:number,
+    width:number,
+    height:number
+}
+
 /**
  * An element that users can pinch-to-zoom and pan.
  */
@@ -39,7 +46,7 @@ class ZoomPanel extends HTMLElement{
     private lastPointPos:Point = {x:0,y:0}
     /** Maximum time that can pass between taps for two taps to count as a double tap */
     private doubleTapTime = 300 
-
+    public centerOnDoubleTap = false
     /** Used for the mouseWheelTimeout complete */
     private mouseWheelTimoutID = undefined
 
@@ -234,7 +241,7 @@ class ZoomPanel extends HTMLElement{
         let targetScale = this.scale - e.deltaY/750            
         
         this.style.transition = "none"
-        this.setZoom(targetScale, e.clientX - this.boundingBox.left, e.clientY - this.boundingBox.top)
+        this.doPinch(targetScale, e.clientX - this.boundingBox.left, e.clientY - this.boundingBox.top)
         
         if(this.mouseWheelTimoutID) clearTimeout(this.mouseWheelTimoutID)
         else this.dispatchEvent(new CustomEvent("manipulationStart"))
@@ -251,7 +258,7 @@ class ZoomPanel extends HTMLElement{
         else{
             let x = e.clientX
             let y = e.clientY
-            this.setZoom(2,x - this.boundingBox.left, y - this.boundingBox.top,true,true)
+            this.doPinch(2,x - this.boundingBox.left, y - this.boundingBox.top,true,this.centerOnDoubleTap)
         }
         
     }
@@ -431,13 +438,13 @@ class ZoomPanel extends HTMLElement{
 
     /**
      * Immediately set the zoom of the element. Calls while gesturing are ignored 
-     * @param targetScale the scale to end up at
-     * @param originX where to zoom into
-     * @param originY where to zoom into
+     * @param withScale the scale to end up at
+     * @param atX where to zoom into
+     * @param atY where to zoom into
      * @param animate should animate change. Default is false.
      * @param center center/pan the content so that the origin is in the middle of the element. Default is false
      */
-    setZoom(targetScale:number,originX:number,originY:number,animate=false,center=false){
+    doPinch(withScale:number,atX:number,atY:number,animate=false,center=false){
         if(this.gesturing){
             console.warn("ZoomPanel:: can't set zoom while gesturing")
             return
@@ -448,17 +455,17 @@ class ZoomPanel extends HTMLElement{
         // if(animate) this.style.willChange = "transform"
 
         this.initialCenter = {
-            x:originX,
-            y:originY
+            x:atX,
+            y:atY
         }
 
         // barf. TODO: clean this all up
         this.initialDistance = 100 
-        this.pinchDistance = 100 + 100 * (targetScale - this.scale)
+        this.pinchDistance = 100 + 100 * (withScale - this.scale)
         this.pinchScale    = (this.pinchDistance / this.initialDistance)                                
                 
-        let newCenterX = center ? this.boundingBox.width/2 : originX
-        let newCenterY = center ? this.boundingBox.height/2 : originY
+        let newCenterX = center ? this.boundingBox.width/2 : atX
+        let newCenterY = center ? this.boundingBox.height/2 : atY
         
         this.gesturePositionChange.x =  newCenterX - this.initialCenter.x * this.pinchScale
         this.gesturePositionChange.y =  newCenterY - this.initialCenter.y * this.pinchScale
@@ -483,8 +490,79 @@ class ZoomPanel extends HTMLElement{
         this.initialCenter.y = 0
         this.initialScale    *= this.pinchScale
         this.initialGesturePosition.x  = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x
-        this.initialGesturePosition.y  = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y            
+        this.initialGesturePosition.y  = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y
     }
+
+    /**
+     * perform a pinch such that the final scale is scale, and X/Y are based on scale of 1... 
+     * @param scale 
+     * @param atX 
+     * @param atY 
+     * @param animate 
+     * @param center 
+     */
+    pinchTo(scale:number,atX:number,atY:number,animate=false,center=false){
+        // start
+        this.style.transition =  animate ? "transform 0.65s" : "none"
+        // if(animate) this.style.willChange = "transform"
+
+        
+        // set initial conditions.
+        this.initialCenter = {
+            x:atX,
+            y:atY
+        }
+        this.scale = 1;
+        this.initialScale = 1;
+        this.initialDistance = 100;
+        this.initialGesturePosition.x = 0
+        this.initialGesturePosition.y = 0
+
+        // perform a pinch from initial conditions...
+
+        this.initialDistance = 100 
+        this.pinchDistance = 100 + 100 * (scale - this.scale)
+        this.pinchScale    = (this.pinchDistance / this.initialDistance)               
+                
+        let newCenterX = center ? this.boundingBox.width/2 : atX
+        let newCenterY = center ? this.boundingBox.height/2 : atY
+        
+        this.gesturePositionChange.x =  newCenterX - this.initialCenter.x * this.pinchScale
+        this.gesturePositionChange.y =  newCenterY - this.initialCenter.y * this.pinchScale
+
+        let absoluteScale       = this.pinchScale * this.initialScale
+        let absoluteOffsetX     = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale
+        let absoluteOffsetY     = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale                
+
+        // do transform
+        this.style.transform = `translate(${absoluteOffsetX}px, ${absoluteOffsetY}px) scale(${absoluteScale})`
+        this.style.transformOrigin = `0 0`
+        
+        // cache values
+        this.scale    = absoluteScale;
+        this.origin.x = newCenterX;
+        this.origin.y = newCenterY;
+        
+        // cleanup
+        this.initialCenter.x = 0
+        this.initialCenter.y = 0
+        this.initialScale    *= this.pinchScale
+        this.initialGesturePosition.x  = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x
+        this.initialGesturePosition.y  = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y
+    }
+        
+    frame(
+        rect:Rect                
+    ){
+
+        let x = rect.left + rect.width/2;
+        let y = rect.top + rect.height/2;
+        let maxWidthScale = this.boundingBox.width/rect.width;
+        let maxHeightScale = this.boundingBox.height/rect.height;
+        let scale = Math.min(maxWidthScale,maxHeightScale)
+
+        this.pinchTo(scale,x,y,true,true);
+    }   
 
     /** Animate a return to scale 0 and no pan. Clear the pointers list just in case. */
     clearZoom(){        
