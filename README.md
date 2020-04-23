@@ -28,11 +28,21 @@
 `clearZoom()` 
 Animate the content back to its default position and scale; reset the pointer tracking cache. I recommend providing some way for a user to trigger this. (See warning.)
 
-`setZoom(targetScale:number,originX:number,originY:number,animate=false,center=false)`
-Immediately set the zoom of the element. Calls to this while gesturing are ignored. 
-- `targetScale` The scale to end up at, where 1 is 100%.
-- `originX` The x coordinate of the content to zoom into.
-- `originY` The x coordinate of the content to zoom into.
+`pinchTo(scale:number,atX:number,atY:number,animate=false,center=false)`
+Perform a fake pinch such that the final scale is `scale`, and X/Y are based on scale of 1... 
+- `scale` The scale to end up at, where 1 is 100%.
+- `atX` The x coordinate in panel at initial scale 1.
+- `atY` The x coordinate in panel at initial scale 1.
+- `animate` Should the change be animated? Default is `false`.
+- `center` Move the content so that the `originX` and `originY` are in the middle of the zoom-panel element. Default is `false`.
+
+`doPinch(withScale:number,atX:number,atY:number,animate=false,center=false)`
+Perform a fake pinch on the transformed panel. 
+Repeat calls with the same values do not produce the same visual result. 
+Calls to this while gesturing are ignored. 
+- `withScale` The final 'scale' of the fake pinch.
+- `originX` The x coordinate within the zoom-panel.
+- `originY` The x coordinate within the zoom-panel.
 - `animate` Should the change be animated? Default is `false`.
 - `center` Move the content so that the `originX` and `originY` are in the middle of the zoom-panel element. Default is `false`.
 
@@ -46,3 +56,4 @@ Zoom-Panel emits the following custom events:
 - `pinchStart`
 - `pinchEnd`
 - `manipulationEnd` when some gesture ends without switching to a different gesture, e.g. putting a second finger down triggers `panEnd` but not `manipulationEnd`.
+- `zoomDidClear` when the animation initiated by clearZoom() completes.
