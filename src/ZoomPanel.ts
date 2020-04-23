@@ -43,6 +43,9 @@ class ZoomPanel extends HTMLElement{
     /** Used for the mouseWheelTimeout complete */
     private mouseWheelTimoutID = undefined
 
+    /** clearZoom uses a delay to dispatch a zoomclear event */
+    private clearZoomTimeoutID = undefined
+
     /** Whether or not a user is pinching or panning */
     get gesturing(){
         return this.mode != "none"
@@ -88,10 +91,11 @@ class ZoomPanel extends HTMLElement{
                 if(this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime ){
                     // clear pointer cache
                     this.pointers.length = 0
+                    this.gestureWillBegin()
                     this.pointers.push(e)
                     e.stopImmediatePropagation()
                     e.preventDefault()
-                    this.doubleTap(e)                    
+                    this.doubleTap(e)                 
                 }else{
                     this.lastPointTime = currentTime
                     this.lastPointPos.x = this.pointers[0].clientX
@@ -228,10 +232,15 @@ class ZoomPanel extends HTMLElement{
 
     private handleMouseWheel(e){
         let targetScale = this.scale - e.deltaY/750            
+        
         this.style.transition = "none"
         this.setZoom(targetScale, e.clientX - this.boundingBox.left, e.clientY - this.boundingBox.top)
+        
         if(this.mouseWheelTimoutID) clearTimeout(this.mouseWheelTimoutID)
+        else this.dispatchEvent(new CustomEvent("manipulationStart"))
+
         this.mouseWheelTimoutID = setTimeout(()=>{
+            this.mouseWheelTimoutID = undefined
             this.gestureEnd()
         },300)
     }
@@ -397,6 +406,7 @@ class ZoomPanel extends HTMLElement{
 
     /** Called before a pan or pinch begins while not doing either */
     private gestureWillBegin(e?:PointerEvent){                
+        if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
         this.style.willChange = "transform"
     }
 
@@ -404,7 +414,7 @@ class ZoomPanel extends HTMLElement{
     private gestureEnd(e?:PointerEvent){                
         this.mode = "none"
         this.style.willChange = ""
-        if(this.scale <= 1){
+        if(this.scale <= 1 ){
             this.clearZoom()
         }
     }
@@ -477,7 +487,7 @@ class ZoomPanel extends HTMLElement{
     }
 
     /** Animate a return to scale 0 and no pan. Clear the pointers list just in case. */
-    clearZoom(){
+    clearZoom(){        
         this.pointers.length = 0;
         this.scale    = 1;
         this.origin.x = 0;
@@ -491,8 +501,11 @@ class ZoomPanel extends HTMLElement{
         this.style.transform = `translate(0px, 0px) scale(1)`
         this.style.transformOrigin = `0 0`
         this.style.transition = "transform 0.65s"
-        setTimeout(()=>{
+        if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
+        this.clearZoomTimeoutID = setTimeout(()=>{
             if(!this.gesturing) this.style.willChange = ``
+            this.dispatchEvent(new CustomEvent("zoomDidClear"))
+            //else // warn -- clearZoom timeout was not cleared properly
         },700)
     }
     

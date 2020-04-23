@@ -17,6 +17,7 @@ class ZoomPanel extends HTMLElement {
         this.lastPointPos = { x: 0, y: 0 };
         this.doubleTapTime = 300;
         this.mouseWheelTimoutID = undefined;
+        this.clearZoomTimeoutID = undefined;
     }
     get gesturing() {
         return this.mode != "none";
@@ -46,6 +47,7 @@ class ZoomPanel extends HTMLElement {
                 let currentTime = new Date().getTime();
                 if (this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime) {
                     this.pointers.length = 0;
+                    this.gestureWillBegin();
                     this.pointers.push(e);
                     e.stopImmediatePropagation();
                     e.preventDefault();
@@ -138,7 +140,10 @@ class ZoomPanel extends HTMLElement {
         this.setZoom(targetScale, e.clientX - this.boundingBox.left, e.clientY - this.boundingBox.top);
         if (this.mouseWheelTimoutID)
             clearTimeout(this.mouseWheelTimoutID);
+        else
+            this.dispatchEvent(new CustomEvent("manipulationStart"));
         this.mouseWheelTimoutID = setTimeout(() => {
+            this.mouseWheelTimoutID = undefined;
             this.gestureEnd();
         }, 300);
     }
@@ -246,6 +251,8 @@ class ZoomPanel extends HTMLElement {
         this.pinchScale = undefined;
     }
     gestureWillBegin(e) {
+        if (this.clearZoomTimeoutID)
+            clearTimeout(this.clearZoomTimeoutID);
         this.style.willChange = "transform";
     }
     gestureEnd(e) {
@@ -306,9 +313,12 @@ class ZoomPanel extends HTMLElement {
         this.style.transform = `translate(0px, 0px) scale(1)`;
         this.style.transformOrigin = `0 0`;
         this.style.transition = "transform 0.65s";
-        setTimeout(() => {
+        if (this.clearZoomTimeoutID)
+            clearTimeout(this.clearZoomTimeoutID);
+        this.clearZoomTimeoutID = setTimeout(() => {
             if (!this.gesturing)
                 this.style.willChange = ``;
+            this.dispatchEvent(new CustomEvent("zoomDidClear"));
         }, 700);
     }
 }
