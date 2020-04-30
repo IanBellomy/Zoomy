@@ -134,7 +134,7 @@ class ZoomPanel extends HTMLElement {
             }
         };
         document.addEventListener("pointerup", handlePointerUp, { capture: true });
-        this.addEventListener("mousewheel", this.handleMouseWheel.bind(this), { capture: true });
+        this.addEventListener("wheel", this.handleMouseWheel.bind(this), { capture: true });
     }
     handleMouseWheel(e) {
         let targetScale = this.scale - e.deltaY / 750;

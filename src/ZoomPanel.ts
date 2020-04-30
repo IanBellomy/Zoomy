@@ -235,7 +235,7 @@ class ZoomPanel extends HTMLElement{
         // this.addEventListener("pointercancel",this.pinchEnd.bind(this),{capture:true})
         // this.addEventListener("pointercancel",this.pinchEnd.bind(this),{capture:true})        
 
-        this.addEventListener("mousewheel",this.handleMouseWheel.bind(this),{capture:true})
+        this.addEventListener("wheel",this.handleMouseWheel.bind(this),{capture:true})
     }
 
     private handleMouseWheel(e){
