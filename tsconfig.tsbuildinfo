@@ -86,8 +86,8 @@
         "signature": "28569d59e07d4378cb3d54979c4c60f9f06305c9bb6999ffe6cab758957adc46"
       },
       "./src/zoompanel.ts": {
-        "version": "50e395484568ef77a9d34c2de40f498865985db397a9f32a18190acd1c9bc211",
-        "signature": "3b74bedf975fd5958abf8203f881bb80be1d1354b3a308206df69a595a3bdc9b"
+        "version": "6d1eaea5f55efb0e89e85432e478367057292b1628553db739105c8efcfd3178",
+        "signature": "d3bb6ae38c7a3fbf42a9cff098ecb8c6ae6c46ee92b9079ddfcc3efda51c2401"
       }
     },
     "options": {

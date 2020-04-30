@@ -19,9 +19,10 @@ class ZoomPanel extends HTMLElement{
     private pointers:PointerEvent[] = []
     /** What kind of gesture is the user performing, if any */
     private mode:"none"|"pinch"|"pan"|"doubletap" = "none"
-    /** The absolute scale the element is at right now. Set using setZoom(...) */
+    /** The absolute scale the element is at right now. Set using doPinch(...) */
     private scale = 1
-    /** The absolute origin from which the absolute scale is. Set using setZoom(...) */
+    private translation = {x:0,y:0}
+    /** The absolute origin from which the absolute scale is. Set using doPinch(...) */
     private origin:Point = {x:0,y:0} 
     /** The initial center of a pinch or pan when it begins */
     private initialCenter:Point = {x:0,y:0}
@@ -71,7 +72,7 @@ class ZoomPanel extends HTMLElement{
     }
     
     connectedCallback(){        
-
+        
         // Add basic event listeners that determine pan/pinch start/move/end and capture events as needed. 
         
         this.addEventListener("pointerdown",(e)=>{
@@ -310,6 +311,8 @@ class ZoomPanel extends HTMLElement{
         let absoluteOffsetX     = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale
         let absoluteOffsetY     = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale                
  
+        this.translation.x = absoluteOffsetX
+        this.translation.y = absoluteOffsetY
         
         // do transform
         this.style.transform = `translate(${absoluteOffsetX}px, ${absoluteOffsetY}px) scale(${absoluteScale})`
@@ -367,18 +370,21 @@ class ZoomPanel extends HTMLElement{
         this.gesturePositionChange.x =  newCenterX - this.initialCenter.x * this.pinchScale
         this.gesturePositionChange.y =  newCenterY - this.initialCenter.y * this.pinchScale
  
-         let absoluteScale       = this.pinchScale * this.initialScale
-         let absoluteOffsetX     = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale
-         let absoluteOffsetY     = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale               
+        let absoluteScale       = this.pinchScale * this.initialScale
+        let absoluteOffsetX     = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale
+        let absoluteOffsetY     = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale               
  
-         // do transform
-         this.style.transform = `translate(${absoluteOffsetX}px, ${absoluteOffsetY}px) scale(${absoluteScale})`
-         this.style.transformOrigin = `0 0`
-         
-         // cache values
-         this.scale    = absoluteScale;
-         this.origin.x = newCenterX;
-         this.origin.y = newCenterY;         
+        this.translation.x = absoluteOffsetX
+        this.translation.y = absoluteOffsetY
+
+        // do transform
+        this.style.transform = `translate(${absoluteOffsetX}px, ${absoluteOffsetY}px) scale(${absoluteScale})`
+        this.style.transformOrigin = `0 0`
+        
+        // cache values
+        this.scale    = absoluteScale;
+        this.origin.x = newCenterX;
+        this.origin.y = newCenterY;         
     }
 
     private panEnd(e:PointerEvent){        
@@ -476,6 +482,9 @@ class ZoomPanel extends HTMLElement{
         let absoluteOffsetX     = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale
         let absoluteOffsetY     = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale               
 
+        this.translation.x = absoluteOffsetX
+        this.translation.y = absoluteOffsetY
+
         // do transform
         this.style.transform = `translate(${absoluteOffsetX}px, ${absoluteOffsetY}px) scale(${absoluteScale})`
         this.style.transformOrigin = `0 0`
@@ -503,7 +512,7 @@ class ZoomPanel extends HTMLElement{
      */
     pinchTo(scale:number,atX:number,atY:number,animate=false,center=false){
         // start
-        this.style.transition =  animate ? "transform 0.65s" : "none"
+        this.style.transition =  animate ? "transform 0.35s" : "none"
         // if(animate) this.style.willChange = "transform"
 
         
@@ -517,6 +526,8 @@ class ZoomPanel extends HTMLElement{
         this.initialDistance = 100;
         this.initialGesturePosition.x = 0
         this.initialGesturePosition.y = 0
+        this.translation.x = 0
+        this.translation.y = 0
 
         // perform a pinch from initial conditions...
 
@@ -533,6 +544,9 @@ class ZoomPanel extends HTMLElement{
         let absoluteScale       = this.pinchScale * this.initialScale
         let absoluteOffsetX     = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale
         let absoluteOffsetY     = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale                
+
+        this.translation.x = absoluteOffsetX
+        this.translation.y = absoluteOffsetY
 
         // do transform
         this.style.transform = `translate(${absoluteOffsetX}px, ${absoluteOffsetY}px) scale(${absoluteScale})`
@@ -564,10 +578,53 @@ class ZoomPanel extends HTMLElement{
         this.pinchTo(scale,x,y,true,true);
     }   
 
+    frameChild(
+        el:Element,
+        padding = {
+            top:20,
+            right:20,
+            bottom:20,
+            left:20,
+        }
+    ){
+        const {top, left, width, height } = el.getBoundingClientRect();			
+        let bbox = {top, left, width, height};
+                
+        let currentTransform = new WebKitCSSMatrix(window.getComputedStyle(this).transform);
+        
+        let currentTranslation = { 
+            x:currentTransform.e,
+            y:currentTransform.f
+        }
+        let currentScale = currentTransform.a;
+
+        // offset for this offset.
+        bbox.top  -= this.boundingBox.top
+        bbox.left -= this.boundingBox.left 
+
+        // peal off zoom-panel transform
+        bbox.top    -= currentTranslation.y;
+        bbox.left   -= currentTranslation.x;
+        bbox.width  /= currentScale
+        bbox.height /= currentScale
+        bbox.top    /= currentScale;
+        bbox.left   /= currentScale;
+        
+        // adjust w/ padding        
+        bbox.top -= padding.top
+        bbox.left -= padding.left
+        bbox.height += padding.top + padding.bottom
+        bbox.width += padding.left + padding.right
+        
+        this.frame(bbox);
+    }
+
     /** Animate a return to scale 0 and no pan. Clear the pointers list just in case. */
     clearZoom(){        
         this.pointers.length = 0;
         this.scale    = 1;
+        this.translation.x = 0
+        this.translation.y = 0
         this.origin.x = 0;
         this.origin.y = 0;        
         this.initialCenter.x = 0
@@ -586,12 +643,9 @@ class ZoomPanel extends HTMLElement{
             //else // warn -- clearZoom timeout was not cleared properly
         },700)
     }
+
     
 }
-
-// interface ZoomPanel extends HTMLElement{
-    // events? 
-// }
 
 customElements.define('zoom-panel',ZoomPanel)
 

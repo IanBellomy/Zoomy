@@ -20,16 +20,43 @@
         	position: fixed;
         	height:100%;
         	width:100%;
+            transform-origin: 0 0;
+            --zoom-panel-transition:transform 0.25s;
+            --zoom-panel-transform:translate(0px, 0px) scale(1);
+            transform:var(--zoom-panel-transform);
+            transition:var(--zoom-panel-transition)
         }
         img {
           max-width: 100%;
         }
+        #cat2{
+            max-width: 25%;
+        }
+        #cat3{
+            max-width: 50%;
+        }        
     </style>
-    <script type="module" src="ZoomPanel.js"></script>
+    <script type="module" src="ZoomPanel.js"></script>    
 </head>
 <body touch-action="none">
     <zoom-panel>
-    	<img src="cat.jpg">
+        <img id="cat1" src="cat.jpg">        
+        <img id="cat2" src="cat.jpg">        
+        <img id="cat3" src="cat.jpg">        
+        
     </zoom-panel>
+    <script>
+        var z = document.querySelector("zoom-panel");
+        var imgs = document.querySelectorAll("img")
+        document.addEventListener("keydown",(e)=>{
+            if(e.key == "1"){
+                z.frameChild(imgs[0]);
+            }else if(e.key == "2"){
+                z.frameChild(imgs[1]);
+            }else if(e.key == "3"){
+                z.frameChild(imgs[2]);
+            }
+        })
+    </script>
 </body>
 </html>
