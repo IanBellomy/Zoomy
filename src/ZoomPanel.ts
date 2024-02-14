@@ -831,7 +831,6 @@ class ZoomPanel extends HTMLElement{
         // view panel
         const viewport = document.createElement("div")
         this._debugElement.appendChild(viewport)
-        this._debugElement.innerHTML = "ZOOM-PANEL DEBUG MODE ON"
         Object.assign(viewport.style,{
             backgroundColor:"transparent",
             outline:"10px solid palegreen",
@@ -864,16 +863,46 @@ class ZoomPanel extends HTMLElement{
         });
         const ctx = canvas.getContext("2d")
 
+         // vitals
+         const vitals = document.createElement("div")
+         this._debugElement.appendChild(vitals)
+         Object.assign(vitals.style,{
+             pointerEvents:"none",
+             position : "absolute",
+             top:"0px",
+             left:"0px",
+             width : "100%",
+             height : "100%",
+             fontSize:"0.8rem",
+             transformOrigin:"0 0"
+         })
+
         //
         console.warn("starting zoom panel debug loop!")
         const debugLoop = ()=>{
 
+            // vitals
+            Object.assign(vitals.style,{
+                // transform:`translate(${-this.translation.x}px, ${-this.translation.y}px)`
+                transform:`translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1/this.scale}) `
+            });
+            vitals.innerHTML = `
+                <div style="background-color:#000000cc;width:fit-content;"><Zoom-Panel> Debug:</div>
+                <div style="background-color:#000000cc;width:fit-content;">mode: ${this.mode}</div>
+                <div style="background-color:#000000cc;width:fit-content;">pointers: ${this.pointers.length}</div>
+                <div style="background-color:#000000cc;width:fit-content;">bbox: ${JSON.stringify(this.untransformedBoundingClientRect)}</div>
+                <div style="background-color:#000000cc;width:fit-content;">transform: ${this.style.transform}</div>
+            `
+
+
+            // viewport
             Object.assign(viewport.style,{
                 width:this.viewport.width +"px",
                 height:this.viewport.height +"px",
                 top:this.viewport.top +"px",
                 left:this.viewport.top +"px",
             });
+
 
             // canvas
             if(canvas.width != this.untransformedBoundingClientRect.width) canvas.setAttribute("width",this.untransformedBoundingClientRect.width + "px")
@@ -888,10 +917,13 @@ class ZoomPanel extends HTMLElement{
             ctx.lineWidth = 4;
             ctx.strokeStyle = "#00ffff"
             this.pointers.forEach(p=>{
+                let size = p.pointerType == "touch"
+                    ? 100
+                    : 20
                 ctx.strokeRect(
-                    p.clientX - 10,
-                    p.clientY - 10,
-                    20,20
+                    p.clientX - size/2,
+                    p.clientY - size/2,
+                    size,size
                 )
             })
             // const center = this.center;
