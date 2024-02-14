@@ -20,43 +20,79 @@
         	position: fixed;
         	height:100%;
         	width:100%;
-            transform-origin: 0 0;
-            --zoom-panel-transition:transform 0.25s;
-            --zoom-panel-transform:translate(0px, 0px) scale(1);
-            transform:var(--zoom-panel-transform);
-            transition:var(--zoom-panel-transition)
         }
         img {
           max-width: 100%;
         }
         #cat2{
-            max-width: 25%;
+            max-width: 15%;
         }
         #cat3{
             max-width: 50%;
+        }
+        div{
+            background-color: black;
+            color:white;
+            text-transform: UPPERCASE;
+            position:fixed;
+            /* width:100vw;
+            height:100vh;             */
+            transform-origin: 0px 0px;
+            /* transform:translate(0px,0px);
+            transition: transform 2s;
+            will-change: transform; */
         }        
     </style>
     <script type="module" src="ZoomPanel.js"></script>    
 </head>
 <body touch-action="none">
-    <zoom-panel>
+    <zoom-panel>        
         <img id="cat1" src="cat.jpg">        
         <img id="cat2" src="cat.jpg">        
         <img id="cat3" src="cat.jpg">        
-        
     </zoom-panel>
+    <!-- <div id="pinned">PINNED TAG</div> -->
     <script>
-        var z = document.querySelector("zoom-panel");
-        var imgs = document.querySelectorAll("img")
-        document.addEventListener("keydown",(e)=>{
-            if(e.key == "1"){
-                z.frameChild(imgs[0]);
-            }else if(e.key == "2"){
-                z.frameChild(imgs[1]);
-            }else if(e.key == "3"){
-                z.frameChild(imgs[2]);
+        var x,imgs,pe;
+        window.onload = ()=>{   
+            z = document.querySelector("zoom-panel");
+            imgs = document.querySelectorAll("img")
+            document.addEventListener("keydown",(e)=>{
+                if(e.key == "1"){
+                    z.frameChild(imgs[0]);
+                }else if(e.key == "2"){
+                    z.frameChild(imgs[1]);
+                }else if(e.key == "3"){
+                    z.frameChild(imgs[2]);
+                }
+            })    
+            pe = document.querySelector("#pinned")   
+            z.addEventListener("transform-update",(evt)=>{
+                // console.log(evt.target.currentTransform);
+                // pe.style.transform = `scale(${1/z.currentTransform.scale})`
+                let bb = imgs[2].getBoundingClientRect()
+                // console.log(bb);
+                pe.style.transform = `translate(${bb.x}px, ${bb.y}px)`
+
+                console.log(z.getBoundingClientRect());
+
+                // do we git zoom a point to track...
+                /// z.convert point // <- convert a point from it's original location in the zoom panel rect to its transformed one
+            })
+            
+            let n = 0;
+            let loop = ()=>{
+                n++;
+                console.log(window.getComputedStyle(pe).transform)
+                if(n < 150) window.requestAnimationFrame(loop);
             }
-        })
+            window.zp = document.querySelector("zoom-panel")
+            window.zp.debug();
+
+            // pe.style.easing = "cubic-bezier(0.375, 0.115, 0.000, 1.000)"
+            // pe.style.transform = "translate(100px,100px) scale(4)"
+            // loop();
+        }  
     </script>
 </body>
 </html>

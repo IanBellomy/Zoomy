@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body{
+            height:100vh;
+            background-color:#ccc;
+        }
+        div{
+            background-color:black;
+            width:10px;
+            height:10px;
+            position:fixed;
+            transition:transform 1s;
+            pointer-events:none;
+            top:0px;
+            left:0px;
+        }
+        #ring{
+            background-color:transparent;            
+            outline:2px solid black;
+            outline-offset: 4px;    
+            transition:none;
+            
+        }
+    </style>
+    <script>
+        window.onload = ()=>{
+            var div = document.querySelector("div");            
+            var ring = document.querySelector("#ring");            
+
+            function handleTransitionRun(e){
+                console.log("run")
+            }
+            function handleTransitionStart(e){
+                console.log("start")                        
+            }
+            function handleTransitionEnd(e){
+                console.log("end")
+            }
+            function handleTransitionCancel(e){
+                console.log("cancel")
+            }
+
+            div.addEventListener("transitionrun",handleTransitionRun)
+            div.addEventListener("transitionstart",handleTransitionStart)
+            div.addEventListener("transitioncancel",handleTransitionCancel)
+            div.addEventListener("transitionend",handleTransitionEnd)
+
+            document.body.onmousedown = (e)=>{                
+                div.style.transform = `translate(${e.clientX}px,${e.clientY}px)`
+            }
+
+            let pRect = {}
+
+            update = ()=>{
+                let r = div.getBoundingClientRect();
+                if(r.x != pRect.x && r.y != pRect.y) console.log(r);
+                pRect = r;
+                ring.style.transform = `translate(${r.x}px,${r.y}px)`
+                window.requestAnimationFrame(update)
+            }
+            update();
+        }
+    </script>
+</head>
+<body>
+    Click anywhere. 
+    <div></div>
+    <div id="ring"></div>
+    
+</body>
+</html>
