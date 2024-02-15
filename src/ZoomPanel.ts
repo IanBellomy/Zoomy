@@ -8,17 +8,50 @@ interface Rect{
     left:number,
     width:number,
     height:number,
+
     /** @deprecated */
     x?:number,
     /** @deprecated */
     y?:number
 }
 
-const defaultEase = "cubic-bezier(0.375, 0.115, 0.000, 1.000);"
+export const GestureTypes = ["pinch","pan","doubleTap","scroll"] as const;
+export type GestureType = typeof GestureTypes[number]|"manipulation";
+export type GestureState = "Start"|"Change"|"End"
+export type GestureEventType = `${GestureType}${GestureState}`|`${GestureType}Will${GestureState}`
+export type ZoomPanelEventType = GestureEvent|"didClearManipulation"|"zoomDidClear"
+
+export class GestureEvent<BE extends PointerEvent|WheelEvent = PointerEvent|WheelEvent> extends Event{
+    constructor(
+        type:GestureEventType,
+        readonly baseEvent?:BE
+    ){
+        super(type);
+    }
+
+    shouldStopPropagation = false;
+    shouldStopImmediatePropagation = false;
+
+    stopPropagation(): void {
+        this.shouldStopPropagation = true;
+        super.stopPropagation();
+    }
+
+    stopImmediatePropagation(): void {
+        this.shouldStopImmediatePropagation = true;
+        super.stopImmediatePropagation()
+    }
+}
+
 /**
  * In seconds
  */
 const defaultEaseTime = 0.65
+
+/**
+ * Used for animating to put a rect into view
+ */
+const defaultEase = "cubic-bezier(0.375, 0.115, 0.000, 1.000);"
 
 /**
  * An element that users can pinch-to-zoom and pan.
@@ -44,7 +77,7 @@ class ZoomPanel extends HTMLElement{
     /** A cache of pointerEvents active on this element; alternative to touchEvent.touches  */
     private pointers:PointerEvent[] = []
     /** What kind of gesture is the user performing, if any */
-    private mode:"none"|"pinch"|"pan"|"doubletap"|"scroll" = "none"
+    private mode:"none"|GestureType = "none"
 
     /** The target scale of the zoom-panel.  */
     private _scale = 1
@@ -172,13 +205,11 @@ class ZoomPanel extends HTMLElement{
                 switch(this.mode){
                     case "pinch":
                         this.pinchEnd()
-                        this.dispatchEvent(new CustomEvent("pinchEnd")); break;
-                    case "pan":
+                        break;
+                        case "pan":
                         this.panEnd();
-                        this.dispatchEvent(new CustomEvent("panEnd")); break;
+                        break;
                 }
-                this.gestureEnd()
-                this.dispatchEvent(new CustomEvent("manipulationEnd"))
             }
         }
     }
@@ -214,9 +245,9 @@ class ZoomPanel extends HTMLElement{
     }
 
     private _handleResize(){
-        let previousVP = this.viewport;
+        // let previousVP = this.viewport;
         this._flushCachedBoundingRect();
-        this.frame(previousVP,false);
+        // this.frame(previousVP,false);
     }
 
     private setTransform(x:number,y:number,scale:number){
@@ -239,15 +270,20 @@ class ZoomPanel extends HTMLElement{
         this._handleResize = this._handleResize.bind(this)
         this._flushCachedBoundingRect = this._flushCachedBoundingRect.bind(this)
         this.handlePointerUp = this.handlePointerUp.bind(this)
+        this.handlePointerDownCapture = this.handlePointerDownCapture.bind(this)
+        this.handlePointerDown = this.handlePointerDown.bind(this)
+        this.handlePointerMoveCapture = this.handlePointerMoveCapture.bind(this)
+        this.handleMainWindowVisibilityChange = this.handleMainWindowVisibilityChange.bind(this)
+        this.handleMouseWheelCapture = this.handleMouseWheelCapture.bind(this)
     }
 
     resizeObserver:ResizeObserver|null =
         ResizeObserver ?
             new ResizeObserver((e)=>{
-                console.log(e)
                 this._handleResize();
             })
             : null
+
 
     connectedCallback(){
         this.style.transformOrigin = `0 0`
@@ -259,32 +295,79 @@ class ZoomPanel extends HTMLElement{
         }
 
         // Add basic event listeners that determine pan/pinch start/move/end and capture events as needed.
-        this.addEventListener("pointerdown",(e)=>{
-            if(!this.manipulationAllowed) return;
+        this.addEventListener("pointerdown",this.handlePointerDownCapture,{capture:true})
+
+        // BUBBLE listener
+        // if a pointerdown event bubbles up into the zoom panel, un-captured, then the user may want to pan...
+        this.addEventListener("pointerdown",this.handlePointerDown)
+
+        this.addEventListener("pointermove",this.handlePointerMoveCapture,{capture:true})
+
+
+        // Listen during capture on document to prevent elements from swallowing this event and leaving our cache borked.
+        // Should there be a global cache manager?
+        document.addEventListener("pointerup",this.handlePointerUp,{capture:true})
+        document.addEventListener("pointercancel",this.handlePointerUp,{capture:true})
+        document.addEventListener("contextmenu",this.handlePointerUp,{capture:true}) // context menu event swallows pointer event without cancel :(
+
+        // this.addEventListener("pointerout",handlePointerUp,{capture:true})        // should handle these?...  nope — can drag gesture out of zoom area. what
+        // this.addEventListener("pointerleave",handlePointerUp,{capture:true})
+        // document.addEventListener("pointercancel",handlePointerUp,{capture:true})
+
+        // this.addEventListener("pointerup",(e)=>{
+        //     if(this.gesturing) e.stopImmediatePropagation();
+        // },{capture:true})
+
+        // this.addEventListener("pointercancel",this.pinchEnd.bind(this),{capture:true})
+
+        this.addEventListener("wheel",this.handleMouseWheelCapture,{capture:true})
+
+        document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, {capture:true});
+
+        //
+        // Default behaviors
+        //
+        this.addEventListener("doubleTapEnd",this.handleDoubleTap.bind(this))
+        this.addEventListener("manipulationEnd",this.handleManipulationEnd.bind(this))
+    }
+
+    addEventListener<K extends (keyof HTMLElementEventMap)|ZoomPanelEventType>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap|GestureEvent) => any, options?: boolean | AddEventListenerOptions): void;
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+    addEventListener(type: unknown, listener: unknown, options?: unknown): void {
+        //@ts-expect-error
+        super.addEventListener(type,listener,options)
+    }
+
+    handleMainWindowVisibilityChange(e:Event){
+        this.clearManipulation();
+    }
+
+    disconnectedCallback(){
+        this.resizeObserver?.unobserve(this)
+        if(!this.resizeObserver){
+            window.removeEventListener("resize",this._handleResize)
+        }
+        document.removeEventListener("pointerup",this.handlePointerUp,{capture:true})
+    }
+
+    handlePointerDownCapture(e:PointerEvent){
+        if(!this.manipulationAllowed) return;
             // update cached pointers
             this.pointers.push(e)
 
-            // console.log("zoom pointerdown",this.pointers.length,e)
-
             if(this.pointers.length == 2 && this.mode=="none"){
                 // managed to put down two fingers at the "same" time, e.g. between event-loop ticks.
-                this.gestureWillBegin()
                 this.pinchStart(e)
-                this.dispatchEvent(new CustomEvent("pinchStart"))
-                this.dispatchEvent(new CustomEvent("manipulationStart"))
             }else if(this.pointers.length == 2 && this.mode=="pan"){
                 // Added a finger during a pan gesture. [Can happen if we were pinching, then lifted, then placed another finger]
                 this.panEnd(e)
-                this.dispatchEvent(new CustomEvent("panEnd"))
                 this.pinchStart(e)
-                this.dispatchEvent(new CustomEvent("pinchStart"))
             }else if(this.pointers.length == 1 && this.mode == "none"){
                 let currentTime = new Date().getTime();
                 // console.log("Double? ",(currentTime - this.lastPointTime))
                 if(this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime ){
                     // clear pointer cache
                     this.pointers.length = 0
-                    this.gestureWillBegin()
                     // add the pointer back in
                     this.pointers.push(e)
                     e.stopImmediatePropagation()
@@ -322,7 +405,7 @@ class ZoomPanel extends HTMLElement{
                 e.stopImmediatePropagation()
             }
 
-            if(this.pointers.length == 10){
+            if(this.pointers.length == 6){
                 if(
                     !!this._debugElement &&
                     confirm("Enable Zoom-panel debug mode?")
@@ -330,34 +413,27 @@ class ZoomPanel extends HTMLElement{
                     this.debug();
                 }
             }
+    }
 
-        },{capture:true})
+    handlePointerDown(e:PointerEvent){
+        if(!this.manipulationAllowed) return;
 
-        // BUBBLE listener
-        // if a pointerdown event bubbles up into the zoom panel, un-captured, then the user may want to pan...
-        this.addEventListener("pointerdown",(e:PointerEvent)=>{
-
-            if(!this.manipulationAllowed) return;
-
-            // ignore input if flags say so
-            if( (e.pointerType == "touch" && this.panRequiresTwoFingers) ||
-                (e.pointerType == "mouse" && !this.panWithMouse) ||
-                (e.pointerType == "pen" && !this.panWithPen)) return;
+        // ignore input if flags say so
+        if( (e.pointerType == "touch" && this.panRequiresTwoFingers) ||
+            (e.pointerType == "mouse" && !this.panWithMouse) ||
+            (e.pointerType == "pen" && !this.panWithPen)) return;
 
 
-            if(!this.gesturing && this.pointers.length == 1){
-                // console.log("ZoomPanel:: un-captured pointerdown bubbling while zoomed, assuming pan is desired...",e)
-                e.stopImmediatePropagation();
-                this.gestureWillBegin()
-                this.panStart(e)
-                this.dispatchEvent(new CustomEvent("panStart"))
-                this.dispatchEvent(new CustomEvent("manipulationStart")) // TODO: Undo previous tap action?
-                // from this point, zoom panel will capture pointer events going downhill and call panMove()
-            }
-        })
+        if(!this.gesturing && this.pointers.length == 1){
+            // console.log("ZoomPanel:: un-captured pointerdown bubbling while zoomed, assuming pan is desired...",e)
+            e.stopImmediatePropagation();
+            this.panStart(e)
+            // from this point, zoom panel will capture pointer events going downhill and call panMove()
+        }
+    }
 
-        this.addEventListener("pointermove",(e)=>{
-            if(!this.manipulationAllowed) return;
+    handlePointerMoveCapture(e:PointerEvent){
+        if(!this.manipulationAllowed) return;
             // console.log("zoom pointermove ",this.pointers)
             // update cached pointers
             for(let i = 0; i < this.pointers.length; i++){
@@ -366,18 +442,13 @@ class ZoomPanel extends HTMLElement{
 
             if(this.pointers.length >= 2 && this.mode=="none"){
                 // two fingers came out of nowhere!
-                this.gestureWillBegin()
                 this.pinchStart(e)
-                this.dispatchEvent(new CustomEvent("pinchStart"))
-                this.dispatchEvent(new CustomEvent("manipulationStart"))
             } else if(this.pointers.length >= 2 && this.mode =="pinch"){
                 this.pinchMove(e)
             } else if(this.pointers.length >= 2 && this.mode == "pan"){
                 // finger came out of nowhere!
                 this.pinchEnd(e)
-                this.dispatchEvent(new CustomEvent("pinchEnd"))
                 this.panStart(e)
-                this.dispatchEvent(new CustomEvent("panStart"))
             }else if(this.pointers.length == 1 && this.mode == "pan"){
                 // this.dispatchEvent(new CustomEvent("manipulationStart"))         // ?!
                 this.panMove(e)
@@ -387,42 +458,6 @@ class ZoomPanel extends HTMLElement{
                 e.preventDefault()
                 e.stopImmediatePropagation()
             }
-        },{capture:true})
-
-
-        // Listen during capture on document to prevent elements from swallowing this event and leaving our cache borked.
-        // Should there be a global cache manager?
-        document.addEventListener("pointerup",this.handlePointerUp,{capture:true})
-        document.addEventListener("pointercancel",this.handlePointerUp,{capture:true})
-
-        // context menu event swallows pointer event :(
-        document.addEventListener("contextmenu",this.handlePointerUp,{capture:true})
-
-        // this.addEventListener("pointerout",handlePointerUp,{capture:true})        // should handle these?...  nope — can drag gesture out of zoom area. what
-        // this.addEventListener("pointerleave",handlePointerUp,{capture:true})
-        // document.addEventListener("pointercancel",handlePointerUp,{capture:true})
-
-        // this.addEventListener("pointerup",(e)=>{
-        //     if(this.gesturing) e.stopImmediatePropagation();
-        // },{capture:true})
-
-        // this.addEventListener("pointercancel",this.pinchEnd.bind(this),{capture:true})
-
-        this.addEventListener("wheel",this.handleMouseWheel.bind(this),{capture:true})
-
-        document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange.bind(this), {capture:true});
-    }
-
-    handleMainWindowVisibilityChange(e:Event){
-        this.clearManipulation();
-    }
-
-    disconnectedCallback(){
-        this.resizeObserver?.unobserve(this)
-        if(!this.resizeObserver){
-            window.removeEventListener("resize",this._handleResize)
-        }
-        document.removeEventListener("pointerup",this.handlePointerUp,{capture:true})
     }
 
     handlePointerUp(e:PointerEvent){
@@ -457,16 +492,14 @@ class ZoomPanel extends HTMLElement{
             e.preventDefault()
             e.stopImmediatePropagation()
             this.pinchEnd(e)
-            this.dispatchEvent(new CustomEvent("pinchEnd"))
-            this.gestureEnd(e)
-            this.dispatchEvent(new CustomEvent("manipulationEnd"))
+            this.gestureDidEnd("pinch",e)
         } else if(this.pointers.length == 0 && this.mode=="pan"){
             // Removed the last finger while panning, e.g. when there was only one finger to remove
             e.preventDefault()
             e.stopImmediatePropagation()
             this.panEnd(e)
             this.dispatchEvent(new CustomEvent("panEnd"))
-            this.gestureEnd(e)
+            this.gestureDidEnd("pan",e)
             this.dispatchEvent(new CustomEvent("manipulationEnd"))
         }else if(this.pointers.length == 1 && this.mode == "pinch"){
             // Removed all but one finger during a pinch gesture.
@@ -474,6 +507,7 @@ class ZoomPanel extends HTMLElement{
             e.stopImmediatePropagation()
             this.pinchEnd(e)
             this.dispatchEvent(new CustomEvent("pinchEnd"))
+            this.gestureDidEnd("pinch",e)
             this.panStart(this.pointers[0]) // the remaining pointer
             this.dispatchEvent(new CustomEvent("panStart"))
         }
@@ -481,7 +515,7 @@ class ZoomPanel extends HTMLElement{
         // TODO: Consider: If the gesture is done, should we allow the event to continue down into children?
     }
 
-    private handleMouseWheel(e:WheelEvent){
+    private handleMouseWheelCapture(e:WheelEvent){
         if(!this.manipulationAllowed) return;
         this.mode = "scroll";
         let targetScale = this._scale - e.deltaY/750
@@ -490,23 +524,15 @@ class ZoomPanel extends HTMLElement{
         this.doPinch(targetScale, e.clientX - this.untransformedBoundingClientRect.left, e.clientY - this.untransformedBoundingClientRect.top)
 
         if(this.mouseWheelTimeoutID) clearTimeout(this.mouseWheelTimeoutID)
-        else this.dispatchEvent(new CustomEvent("manipulationStart"))
+        else this.dispatchEvent(new GestureEvent("manipulationStart",e))
 
         this.mouseWheelTimeoutID = setTimeout(()=>{
-            this.mouseWheelTimeoutID = undefined
-            this.gestureEnd()
+            this.scrollEnd()
         },750)
     }
 
     private doubleTap(e:PointerEvent){
-        // console.log("doubletap")
-        if(this._scale > 1) this.clearZoom()
-        else{
-            let x = e.clientX
-            let y = e.clientY
-            this.doPinch(2,x - this.untransformedBoundingClientRect.left, y - this.untransformedBoundingClientRect.top,true,this.centerOnDoubleTap)
-        }
-
+        this.dispatchEvent(new GestureEvent("doubleTapEnd",e))
     }
 
     /**
@@ -514,9 +540,10 @@ class ZoomPanel extends HTMLElement{
      */
     private pinchStart(e:PointerEvent){
         if(this.gesturing) return
-        else this.mode = "pinch"
 
-        // recache bounding box?...
+        this.gestureWillBegin("pinch",e)
+
+        this.mode = "pinch"
 
         // console.log("pinch start",e)
         this.style.transition = "none"
@@ -534,6 +561,9 @@ class ZoomPanel extends HTMLElement{
         this.gesturePositionChange.x = 0
         this.gesturePositionChange.y = 0
         this.pinchDistance = this.initialDistance
+
+        this.dispatchEvent(new GestureEvent("pinchStart",e))
+        this.dispatchEvent(new GestureEvent("manipulationStart",e))
     }
 
     /**
@@ -574,7 +604,10 @@ class ZoomPanel extends HTMLElement{
      */
     private panStart(e:PointerEvent){
         if(this.gesturing) return
-        else this.mode = "pan"
+
+        this.gestureWillBegin("pan",e)
+
+        this.mode = "pan"
 
         // console.log("pan start",e)
         this.style.transition = "none"
@@ -593,6 +626,9 @@ class ZoomPanel extends HTMLElement{
         this.gesturePositionChange.x = 0
         this.gesturePositionChange.y = 0
         this.pinchDistance = this.initialDistance
+
+        this.dispatchEvent(new GestureEvent("pinchStart",e))
+        this.dispatchEvent(new GestureEvent("manipulationStart",e))
     }
 
     /**
@@ -628,8 +664,8 @@ class ZoomPanel extends HTMLElement{
 
     private panEnd(e?:PointerEvent){
         if(!this.gesturing) return
-        else this.mode = "none"
-        // console.log("pan end ",e)
+        this.gestureWillEnd("pan")
+        this.mode = "none"
         // pretty sure this doesn't need to be exactly the same as pinchEnd. But to be safe...
         this.initialCenter.x = undefined
         this.initialCenter.y = undefined
@@ -639,12 +675,16 @@ class ZoomPanel extends HTMLElement{
         this.pinchDistance = undefined
         this.gesturePositionChange = {x:0,y:0}
         this.pinchScale = undefined
+        this.style.willChange = ""
+
+        this.dispatchEvent(new GestureEvent("panEnd",e))
+        this.dispatchEvent(new GestureEvent("manipulationEnd",e))
     }
 
     private pinchEnd(e?:PointerEvent){
         if(!this.gesturing) return
-        else this.mode = "none"
-        // console.log("pinch end ",e)
+        this.gestureWillEnd("pinch")
+        this.mode = "none"
         this.initialCenter.x = undefined
         this.initialCenter.y = undefined
         this.initialScale    *= this.pinchScale
@@ -653,22 +693,79 @@ class ZoomPanel extends HTMLElement{
         this.pinchDistance = undefined
         this.gesturePositionChange = {x:0,y:0}
         this.pinchScale = undefined
+        this.style.willChange = ""
+
+        this.dispatchEvent(new GestureEvent("pinchEnd",e))
+        this.dispatchEvent(new GestureEvent("manipulationEnd",e))
+    }
+
+    private scrollEnd(){
+        if(!this.gesturing) return
+        this.gestureWillEnd("scroll")
+        this.mode ="none"
+        clearTimeout(this.mouseWheelTimeoutID);
+        this.mouseWheelTimeoutID = undefined
+        this.style.willChange = ""
+        this.dispatchEvent(new GestureEvent("scrollEnd"))
+        this.dispatchEvent(new GestureEvent("manipulationEnd"))
     }
 
     /** Called before a pan or pinch begins while not doing either */
-    private gestureWillBegin(e?:PointerEvent){
+    private gestureWillBegin(
+        gesture:GestureType,
+        /** The event where a gesture was detected */
+        e:PointerEvent,
+    ){
+        console.trace("GestureWillBegin",gesture,e)
         if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
         this.style.willChange = "transform"
     }
 
-    /** Post pinch or pan cleanup */
-    private gestureEnd(e?:PointerEvent){
-        this.mode = "none"
-        this.style.willChange = ""
+
+    private gestureWillEnd(
+        gesture:GestureType,
+        e?:PointerEvent|WheelEvent
+    ){
+        console.trace("gestureWillEnd",gesture,e)
+        this.dispatchEvent(new GestureEvent("manipulationWillEnd",e))
+    }
+
+    /**
+     * Post pinch or pan cleanup
+     * @deprecated Either gesture should handle that in their respective end method
+     * */
+    private gestureDidEnd(
+        gesture:GestureType,
+        e?:PointerEvent|WheelEvent,
+    ){
+        console.trace("GestureDidEnd",gesture,e)
+        // this.mode = "none"
+        // this.style.willChange = ""
+
+        // this.dispatchEvent(new GestureEvent("manipulationEnd",e))
+    }
+
+    //
+    // default behaviors
+    //
+
+    handleManipulationEnd(){
         if(this._scale <= 1 ){
             this.clearZoom()
         }
     }
+
+    handleDoubleTap(e:GestureEvent<PointerEvent>){
+        if(this._scale > 1){
+            this.clearZoom()
+        }else{
+            let x = e.baseEvent.clientX
+            let y = e.baseEvent.clientY
+            this.doPinch(2,x - this.untransformedBoundingClientRect.left, y - this.untransformedBoundingClientRect.top,true,this.centerOnDoubleTap)
+        }
+    }
+
+
 
     /** aka. scale. */
     get zoom(){
@@ -701,6 +798,9 @@ class ZoomPanel extends HTMLElement{
         //     console.warn("ZoomPanel:: can't set zoom while gesturing")
         //     return
         // }
+
+        // TESTING!
+        let defaultEaseTime = 15
 
         // start
         this.style.transition =  animate ? `all ${defaultEaseTime}s` : "none"
@@ -819,8 +919,8 @@ class ZoomPanel extends HTMLElement{
             position : "absolute",
             top:"0px",
             left:"0px",
-            width : "100%",
-            height : "100%",
+            width : "0px",
+            height : "0px",
             overflow : "visible",
             zIndex : "999999999999999",
             backgroundColor:"#00ff0022",
@@ -828,20 +928,22 @@ class ZoomPanel extends HTMLElement{
             fontFamily:"helvetica,Arial,sans-serif",
         })
 
-        // view panel
-        const viewport = document.createElement("div")
-        this._debugElement.appendChild(viewport)
-        Object.assign(viewport.style,{
-            backgroundColor:"transparent",
-            outline:"10px solid palegreen",
-            position:"absolute",
-            pointerEvents:"none",
-
-            width:this.viewport.width +"px",
-            height:this.viewport.height +"px",
-            top:this.viewport.top +"px",
-            left:this.viewport.top +"px",
-        });
+         // vitals
+         const vitals = document.createElement("div")
+         this._debugElement.appendChild(vitals)
+         Object.assign(vitals.style,{
+             pointerEvents:"none",
+             position : "absolute",
+             display:"flex",
+             flexDirection:"column",
+             top:"0px",
+             left:"0px",
+             width : "0px",
+             height : "0px",
+             overflow:"visible",
+             fontSize:"0.8rem",
+             transformOrigin:"0 0"
+         })
 
         // canvas
         const canvas = document.createElement("canvas")
@@ -857,25 +959,11 @@ class ZoomPanel extends HTMLElement{
             width:this.untransformedBoundingClientRect.width + "px",
             height:this.untransformedBoundingClientRect.height +"px",
             backgroundColor:"transparent",
-            outline:"10px solid purple",
+            outline:"10px solid #00ffff66",
             outlineOffset:"-5px",
             transformOrigin:"0 0"
         });
         const ctx = canvas.getContext("2d")
-
-         // vitals
-         const vitals = document.createElement("div")
-         this._debugElement.appendChild(vitals)
-         Object.assign(vitals.style,{
-             pointerEvents:"none",
-             position : "absolute",
-             top:"0px",
-             left:"0px",
-             width : "100%",
-             height : "100%",
-             fontSize:"0.8rem",
-             transformOrigin:"0 0"
-         })
 
         //
         console.warn("starting zoom panel debug loop!")
@@ -883,37 +971,28 @@ class ZoomPanel extends HTMLElement{
 
             // vitals
             Object.assign(vitals.style,{
-                // transform:`translate(${-this.translation.x}px, ${-this.translation.y}px)`
                 transform:`translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1/this.scale}) `
             });
+
             vitals.innerHTML = `
-                <div style="background-color:#000000cc;width:fit-content;"><Zoom-Panel> Debug:</div>
-                <div style="background-color:#000000cc;width:fit-content;">mode: ${this.mode}</div>
-                <div style="background-color:#000000cc;width:fit-content;">pointers: ${this.pointers.length}</div>
-                <div style="background-color:#000000cc;width:fit-content;">bbox: ${JSON.stringify(this.untransformedBoundingClientRect)}</div>
-                <div style="background-color:#000000cc;width:fit-content;">transform: ${this.style.transform}</div>
+                <div style="background-color:#00000066;width:max-content;">pointers: ${this.pointers.length}</div>
+                <div style="background-color:#00000066;width:max-content;">mode: ${this.mode}</div>
+                <div style="background-color:#00000066;width:max-content;">target transform: ${this.style.transform}</div>
+                <div style="background-color:#00000066;width:max-content;">transition: ${this.style.transition}</div>
+                <div style="background-color:#00000066;width:max-content;">Zoom-Panel element client bbox: ${JSON.stringify(this.untransformedBoundingClientRect)}</div>
             `
-
-
-            // viewport
-            Object.assign(viewport.style,{
-                width:this.viewport.width +"px",
-                height:this.viewport.height +"px",
-                top:this.viewport.top +"px",
-                left:this.viewport.top +"px",
-            });
-
 
             // canvas
             if(canvas.width != this.untransformedBoundingClientRect.width) canvas.setAttribute("width",this.untransformedBoundingClientRect.width + "px")
             if(canvas.height != this.untransformedBoundingClientRect.height) canvas.setAttribute("height",this.untransformedBoundingClientRect.height + "px")
 
             Object.assign(canvas.style,{
-                // transform:`translate(${-this.translation.x}px, ${-this.translation.y}px)`
                 transform:`translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1/this.scale}) `
             });
 
             ctx.clearRect(0,0,canvas.width,canvas.height);
+
+            // draw pointers
             ctx.lineWidth = 4;
             ctx.strokeStyle = "#00ffff"
             this.pointers.forEach(p=>{
@@ -926,14 +1005,6 @@ class ZoomPanel extends HTMLElement{
                     size,size
                 )
             })
-            // const center = this.center;
-            // ctx.fillStyle = "#00ffffaa"
-            // ctx.fillRect(
-            //     center.x,
-            //     center.y,
-            //     2,
-            //     2
-            // )
 
             window.requestAnimationFrame(debugLoop)
         }
@@ -1084,10 +1155,13 @@ class ZoomPanel extends HTMLElement{
         this.mode = "none"
         this.pointers.length = 0;
         this._flushCachedBoundingRect();
+        // make sure this is typed
+        // FIXME: Need to call respective pan/pinchEnd if happening!
         this.dispatchEvent(new CustomEvent("didClearManipulation"))
     }
 
     /**
+     * TODO: This should just be frame(self)!
      * Animate a return to scale 0 and no pan. Clear the pointers list just in case.
      * @param duration MILLISECONDS
      * @param ease

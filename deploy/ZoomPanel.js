@@ -1,5 +1,22 @@
-const defaultEase = "cubic-bezier(0.375, 0.115, 0.000, 1.000);";
+export const GestureTypes = ["pinch", "pan", "doubleTap", "scroll"];
+export class GestureEvent extends Event {
+    constructor(type, baseEvent) {
+        super(type);
+        this.baseEvent = baseEvent;
+        this.shouldStopPropagation = false;
+        this.shouldStopImmediatePropagation = false;
+    }
+    stopPropagation() {
+        this.shouldStopPropagation = true;
+        super.stopPropagation();
+    }
+    stopImmediatePropagation() {
+        this.shouldStopImmediatePropagation = true;
+        super.stopImmediatePropagation();
+    }
+}
 const defaultEaseTime = 0.65;
+const defaultEase = "cubic-bezier(0.375, 0.115, 0.000, 1.000);";
 class ZoomPanel extends HTMLElement {
     get scale() {
         return this._scale;
@@ -47,15 +64,11 @@ class ZoomPanel extends HTMLElement {
                 switch (this.mode) {
                     case "pinch":
                         this.pinchEnd();
-                        this.dispatchEvent(new CustomEvent("pinchEnd"));
                         break;
                     case "pan":
                         this.panEnd();
-                        this.dispatchEvent(new CustomEvent("panEnd"));
                         break;
                 }
-                this.gestureEnd();
-                this.dispatchEvent(new CustomEvent("manipulationEnd"));
             }
         }
     }
@@ -80,9 +93,7 @@ class ZoomPanel extends HTMLElement {
         return this._cachedBoundingBox;
     }
     _handleResize() {
-        let previousVP = this.viewport;
         this._flushCachedBoundingRect();
-        this.frame(previousVP, false);
     }
     setTransform(x, y, scale) {
         let roundFactor = 1000;
@@ -123,13 +134,17 @@ class ZoomPanel extends HTMLElement {
         this._manipulationAllowed = true;
         this.resizeObserver = ResizeObserver ?
             new ResizeObserver((e) => {
-                console.log(e);
                 this._handleResize();
             })
             : null;
         this._handleResize = this._handleResize.bind(this);
         this._flushCachedBoundingRect = this._flushCachedBoundingRect.bind(this);
         this.handlePointerUp = this.handlePointerUp.bind(this);
+        this.handlePointerDownCapture = this.handlePointerDownCapture.bind(this);
+        this.handlePointerDown = this.handlePointerDown.bind(this);
+        this.handlePointerMoveCapture = this.handlePointerMoveCapture.bind(this);
+        this.handleMainWindowVisibilityChange = this.handleMainWindowVisibilityChange.bind(this);
+        this.handleMouseWheelCapture = this.handleMouseWheelCapture.bind(this);
     }
     connectedCallback() {
         var _a;
@@ -138,99 +153,19 @@ class ZoomPanel extends HTMLElement {
         if (!this.resizeObserver) {
             window.addEventListener("resize", this._handleResize);
         }
-        this.addEventListener("pointerdown", (e) => {
-            if (!this.manipulationAllowed)
-                return;
-            this.pointers.push(e);
-            if (this.pointers.length == 2 && this.mode == "none") {
-                this.gestureWillBegin();
-                this.pinchStart(e);
-                this.dispatchEvent(new CustomEvent("pinchStart"));
-                this.dispatchEvent(new CustomEvent("manipulationStart"));
-            }
-            else if (this.pointers.length == 2 && this.mode == "pan") {
-                this.panEnd(e);
-                this.dispatchEvent(new CustomEvent("panEnd"));
-                this.pinchStart(e);
-                this.dispatchEvent(new CustomEvent("pinchStart"));
-            }
-            else if (this.pointers.length == 1 && this.mode == "none") {
-                let currentTime = new Date().getTime();
-                if (this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime) {
-                    this.pointers.length = 0;
-                    this.gestureWillBegin();
-                    this.pointers.push(e);
-                    e.stopImmediatePropagation();
-                    e.preventDefault();
-                    this.doubleTap(e);
-                }
-                else {
-                    this.lastPointTime = currentTime;
-                    this.lastPointPos.x = this.pointers[0].clientX;
-                    this.lastPointPos.y = this.pointers[0].clientY;
-                }
-            }
-            if (this.gesturing) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-            }
-            if (this.pointers.length == 10) {
-                if (!!this._debugElement &&
-                    confirm("Enable Zoom-panel debug mode?")) {
-                    this.debug();
-                }
-            }
-        }, { capture: true });
-        this.addEventListener("pointerdown", (e) => {
-            if (!this.manipulationAllowed)
-                return;
-            if ((e.pointerType == "touch" && this.panRequiresTwoFingers) ||
-                (e.pointerType == "mouse" && !this.panWithMouse) ||
-                (e.pointerType == "pen" && !this.panWithPen))
-                return;
-            if (!this.gesturing && this.pointers.length == 1) {
-                e.stopImmediatePropagation();
-                this.gestureWillBegin();
-                this.panStart(e);
-                this.dispatchEvent(new CustomEvent("panStart"));
-                this.dispatchEvent(new CustomEvent("manipulationStart"));
-            }
-        });
-        this.addEventListener("pointermove", (e) => {
-            if (!this.manipulationAllowed)
-                return;
-            for (let i = 0; i < this.pointers.length; i++) {
-                if (this.pointers[i].pointerId == e.pointerId)
-                    this.pointers[i] = e;
-            }
-            if (this.pointers.length >= 2 && this.mode == "none") {
-                this.gestureWillBegin();
-                this.pinchStart(e);
-                this.dispatchEvent(new CustomEvent("pinchStart"));
-                this.dispatchEvent(new CustomEvent("manipulationStart"));
-            }
-            else if (this.pointers.length >= 2 && this.mode == "pinch") {
-                this.pinchMove(e);
-            }
-            else if (this.pointers.length >= 2 && this.mode == "pan") {
-                this.pinchEnd(e);
-                this.dispatchEvent(new CustomEvent("pinchEnd"));
-                this.panStart(e);
-                this.dispatchEvent(new CustomEvent("panStart"));
-            }
-            else if (this.pointers.length == 1 && this.mode == "pan") {
-                this.panMove(e);
-            }
-            if (this.gesturing) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-            }
-        }, { capture: true });
+        this.addEventListener("pointerdown", this.handlePointerDownCapture, { capture: true });
+        this.addEventListener("pointerdown", this.handlePointerDown);
+        this.addEventListener("pointermove", this.handlePointerMoveCapture, { capture: true });
         document.addEventListener("pointerup", this.handlePointerUp, { capture: true });
         document.addEventListener("pointercancel", this.handlePointerUp, { capture: true });
         document.addEventListener("contextmenu", this.handlePointerUp, { capture: true });
-        this.addEventListener("wheel", this.handleMouseWheel.bind(this), { capture: true });
-        document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange.bind(this), { capture: true });
+        this.addEventListener("wheel", this.handleMouseWheelCapture, { capture: true });
+        document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, { capture: true });
+        this.addEventListener("doubleTapEnd", this.handleDoubleTap.bind(this));
+        this.addEventListener("manipulationEnd", this.handleManipulationEnd.bind(this));
+    }
+    addEventListener(type, listener, options) {
+        super.addEventListener(type, listener, options);
     }
     handleMainWindowVisibilityChange(e) {
         this.clearManipulation();
@@ -242,6 +177,80 @@ class ZoomPanel extends HTMLElement {
             window.removeEventListener("resize", this._handleResize);
         }
         document.removeEventListener("pointerup", this.handlePointerUp, { capture: true });
+    }
+    handlePointerDownCapture(e) {
+        if (!this.manipulationAllowed)
+            return;
+        this.pointers.push(e);
+        if (this.pointers.length == 2 && this.mode == "none") {
+            this.pinchStart(e);
+        }
+        else if (this.pointers.length == 2 && this.mode == "pan") {
+            this.panEnd(e);
+            this.pinchStart(e);
+        }
+        else if (this.pointers.length == 1 && this.mode == "none") {
+            let currentTime = new Date().getTime();
+            if (this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime) {
+                this.pointers.length = 0;
+                this.pointers.push(e);
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                this.doubleTap(e);
+            }
+            else {
+                this.lastPointTime = currentTime;
+                this.lastPointPos.x = this.pointers[0].clientX;
+                this.lastPointPos.y = this.pointers[0].clientY;
+            }
+        }
+        if (this.gesturing) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+        if (this.pointers.length == 6) {
+            if (!!this._debugElement &&
+                confirm("Enable Zoom-panel debug mode?")) {
+                this.debug();
+            }
+        }
+    }
+    handlePointerDown(e) {
+        if (!this.manipulationAllowed)
+            return;
+        if ((e.pointerType == "touch" && this.panRequiresTwoFingers) ||
+            (e.pointerType == "mouse" && !this.panWithMouse) ||
+            (e.pointerType == "pen" && !this.panWithPen))
+            return;
+        if (!this.gesturing && this.pointers.length == 1) {
+            e.stopImmediatePropagation();
+            this.panStart(e);
+        }
+    }
+    handlePointerMoveCapture(e) {
+        if (!this.manipulationAllowed)
+            return;
+        for (let i = 0; i < this.pointers.length; i++) {
+            if (this.pointers[i].pointerId == e.pointerId)
+                this.pointers[i] = e;
+        }
+        if (this.pointers.length >= 2 && this.mode == "none") {
+            this.pinchStart(e);
+        }
+        else if (this.pointers.length >= 2 && this.mode == "pinch") {
+            this.pinchMove(e);
+        }
+        else if (this.pointers.length >= 2 && this.mode == "pan") {
+            this.pinchEnd(e);
+            this.panStart(e);
+        }
+        else if (this.pointers.length == 1 && this.mode == "pan") {
+            this.panMove(e);
+        }
+        if (this.gesturing) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
     }
     handlePointerUp(e) {
         let removedPointerEvent = null;
@@ -265,16 +274,14 @@ class ZoomPanel extends HTMLElement {
             e.preventDefault();
             e.stopImmediatePropagation();
             this.pinchEnd(e);
-            this.dispatchEvent(new CustomEvent("pinchEnd"));
-            this.gestureEnd(e);
-            this.dispatchEvent(new CustomEvent("manipulationEnd"));
+            this.gestureDidEnd("pinch", e);
         }
         else if (this.pointers.length == 0 && this.mode == "pan") {
             e.preventDefault();
             e.stopImmediatePropagation();
             this.panEnd(e);
             this.dispatchEvent(new CustomEvent("panEnd"));
-            this.gestureEnd(e);
+            this.gestureDidEnd("pan", e);
             this.dispatchEvent(new CustomEvent("manipulationEnd"));
         }
         else if (this.pointers.length == 1 && this.mode == "pinch") {
@@ -282,11 +289,12 @@ class ZoomPanel extends HTMLElement {
             e.stopImmediatePropagation();
             this.pinchEnd(e);
             this.dispatchEvent(new CustomEvent("pinchEnd"));
+            this.gestureDidEnd("pinch", e);
             this.panStart(this.pointers[0]);
             this.dispatchEvent(new CustomEvent("panStart"));
         }
     }
-    handleMouseWheel(e) {
+    handleMouseWheelCapture(e) {
         if (!this.manipulationAllowed)
             return;
         this.mode = "scroll";
@@ -297,26 +305,19 @@ class ZoomPanel extends HTMLElement {
         if (this.mouseWheelTimeoutID)
             clearTimeout(this.mouseWheelTimeoutID);
         else
-            this.dispatchEvent(new CustomEvent("manipulationStart"));
+            this.dispatchEvent(new GestureEvent("manipulationStart", e));
         this.mouseWheelTimeoutID = setTimeout(() => {
-            this.mouseWheelTimeoutID = undefined;
-            this.gestureEnd();
+            this.scrollEnd();
         }, 750);
     }
     doubleTap(e) {
-        if (this._scale > 1)
-            this.clearZoom();
-        else {
-            let x = e.clientX;
-            let y = e.clientY;
-            this.doPinch(2, x - this.untransformedBoundingClientRect.left, y - this.untransformedBoundingClientRect.top, true, this.centerOnDoubleTap);
-        }
+        this.dispatchEvent(new GestureEvent("doubleTapEnd", e));
     }
     pinchStart(e) {
         if (this.gesturing)
             return;
-        else
-            this.mode = "pinch";
+        this.gestureWillBegin("pinch", e);
+        this.mode = "pinch";
         this.style.transition = "none";
         this.initialCenter.x = (this.pointers[1].clientX + this.pointers[0].clientX) / 2 - this.untransformedBoundingClientRect.left;
         this.initialCenter.y = (this.pointers[1].clientY + this.pointers[0].clientY) / 2 - this.untransformedBoundingClientRect.top;
@@ -327,6 +328,8 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = 0;
         this.gesturePositionChange.y = 0;
         this.pinchDistance = this.initialDistance;
+        this.dispatchEvent(new GestureEvent("pinchStart", e));
+        this.dispatchEvent(new GestureEvent("manipulationStart", e));
     }
     pinchMove(e) {
         let distanceX = (this.pointers[1].clientX - this.pointers[0].clientX);
@@ -347,8 +350,8 @@ class ZoomPanel extends HTMLElement {
     panStart(e) {
         if (this.gesturing)
             return;
-        else
-            this.mode = "pan";
+        this.gestureWillBegin("pan", e);
+        this.mode = "pan";
         this.style.transition = "none";
         let x = e.clientX;
         let y = e.clientY;
@@ -358,6 +361,8 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = 0;
         this.gesturePositionChange.y = 0;
         this.pinchDistance = this.initialDistance;
+        this.dispatchEvent(new GestureEvent("pinchStart", e));
+        this.dispatchEvent(new GestureEvent("manipulationStart", e));
     }
     panMove(e) {
         this.pinchScale = 1;
@@ -377,8 +382,8 @@ class ZoomPanel extends HTMLElement {
     panEnd(e) {
         if (!this.gesturing)
             return;
-        else
-            this.mode = "none";
+        this.gestureWillEnd("pan");
+        this.mode = "none";
         this.initialCenter.x = undefined;
         this.initialCenter.y = undefined;
         this.initialScale *= this.pinchScale;
@@ -387,12 +392,15 @@ class ZoomPanel extends HTMLElement {
         this.pinchDistance = undefined;
         this.gesturePositionChange = { x: 0, y: 0 };
         this.pinchScale = undefined;
+        this.style.willChange = "";
+        this.dispatchEvent(new GestureEvent("panEnd", e));
+        this.dispatchEvent(new GestureEvent("manipulationEnd", e));
     }
     pinchEnd(e) {
         if (!this.gesturing)
             return;
-        else
-            this.mode = "none";
+        this.gestureWillEnd("pinch");
+        this.mode = "none";
         this.initialCenter.x = undefined;
         this.initialCenter.y = undefined;
         this.initialScale *= this.pinchScale;
@@ -401,17 +409,47 @@ class ZoomPanel extends HTMLElement {
         this.pinchDistance = undefined;
         this.gesturePositionChange = { x: 0, y: 0 };
         this.pinchScale = undefined;
+        this.style.willChange = "";
+        this.dispatchEvent(new GestureEvent("pinchEnd", e));
+        this.dispatchEvent(new GestureEvent("manipulationEnd", e));
     }
-    gestureWillBegin(e) {
+    scrollEnd() {
+        if (!this.gesturing)
+            return;
+        this.gestureWillEnd("scroll");
+        this.mode = "none";
+        clearTimeout(this.mouseWheelTimeoutID);
+        this.mouseWheelTimeoutID = undefined;
+        this.style.willChange = "";
+        this.dispatchEvent(new GestureEvent("scrollEnd"));
+        this.dispatchEvent(new GestureEvent("manipulationEnd"));
+    }
+    gestureWillBegin(gesture, e) {
+        console.trace("GestureWillBegin", gesture, e);
         if (this.clearZoomTimeoutID)
             clearTimeout(this.clearZoomTimeoutID);
         this.style.willChange = "transform";
     }
-    gestureEnd(e) {
-        this.mode = "none";
-        this.style.willChange = "";
+    gestureWillEnd(gesture, e) {
+        console.trace("gestureWillEnd", gesture, e);
+        this.dispatchEvent(new GestureEvent("manipulationWillEnd", e));
+    }
+    gestureDidEnd(gesture, e) {
+        console.trace("GestureDidEnd", gesture, e);
+    }
+    handleManipulationEnd() {
         if (this._scale <= 1) {
             this.clearZoom();
+        }
+    }
+    handleDoubleTap(e) {
+        if (this._scale > 1) {
+            this.clearZoom();
+        }
+        else {
+            let x = e.baseEvent.clientX;
+            let y = e.baseEvent.clientY;
+            this.doPinch(2, x - this.untransformedBoundingClientRect.left, y - this.untransformedBoundingClientRect.top, true, this.centerOnDoubleTap);
         }
     }
     get zoom() {
@@ -424,6 +462,7 @@ class ZoomPanel extends HTMLElement {
         return Object.freeze(Object.apply({}, this.origin));
     }
     doPinch(withScale, atX, atY, animate = false, center = false) {
+        let defaultEaseTime = 15;
         this.style.transition = animate ? `all ${defaultEaseTime}s` : "none";
         this.style.transitionTimingFunction = defaultEase;
         this.initialCenter = {
@@ -496,25 +535,28 @@ class ZoomPanel extends HTMLElement {
             position: "absolute",
             top: "0px",
             left: "0px",
-            width: "100%",
-            height: "100%",
+            width: "0px",
+            height: "0px",
             overflow: "visible",
             zIndex: "999999999999999",
             backgroundColor: "#00ff0022",
             color: "white",
             fontFamily: "helvetica,Arial,sans-serif",
         });
-        const viewport = document.createElement("div");
-        this._debugElement.appendChild(viewport);
-        Object.assign(viewport.style, {
-            backgroundColor: "transparent",
-            outline: "10px solid palegreen",
-            position: "absolute",
+        const vitals = document.createElement("div");
+        this._debugElement.appendChild(vitals);
+        Object.assign(vitals.style, {
             pointerEvents: "none",
-            width: this.viewport.width + "px",
-            height: this.viewport.height + "px",
-            top: this.viewport.top + "px",
-            left: this.viewport.top + "px",
+            position: "absolute",
+            display: "flex",
+            flexDirection: "column",
+            top: "0px",
+            left: "0px",
+            width: "0px",
+            height: "0px",
+            overflow: "visible",
+            fontSize: "0.8rem",
+            transformOrigin: "0 0"
         });
         const canvas = document.createElement("canvas");
         canvas.setAttribute("width", this.untransformedBoundingClientRect.width + "px");
@@ -528,41 +570,23 @@ class ZoomPanel extends HTMLElement {
             width: this.untransformedBoundingClientRect.width + "px",
             height: this.untransformedBoundingClientRect.height + "px",
             backgroundColor: "transparent",
-            outline: "10px solid purple",
+            outline: "10px solid #00ffff66",
             outlineOffset: "-5px",
             transformOrigin: "0 0"
         });
         const ctx = canvas.getContext("2d");
-        const vitals = document.createElement("div");
-        this._debugElement.appendChild(vitals);
-        Object.assign(vitals.style, {
-            pointerEvents: "none",
-            position: "absolute",
-            top: "0px",
-            left: "0px",
-            width: "100%",
-            height: "100%",
-            fontSize: "0.8rem",
-            transformOrigin: "0 0"
-        });
         console.warn("starting zoom panel debug loop!");
         const debugLoop = () => {
             Object.assign(vitals.style, {
                 transform: `translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1 / this.scale}) `
             });
             vitals.innerHTML = `
-                <div style="background-color:#000000cc;width:fit-content;"><Zoom-Panel> Debug:</div>
-                <div style="background-color:#000000cc;width:fit-content;">mode: ${this.mode}</div>
-                <div style="background-color:#000000cc;width:fit-content;">pointers: ${this.pointers.length}</div>
-                <div style="background-color:#000000cc;width:fit-content;">bbox: ${JSON.stringify(this.untransformedBoundingClientRect)}</div>
-                <div style="background-color:#000000cc;width:fit-content;">transform: ${this.style.transform}</div>
+                <div style="background-color:#00000066;width:max-content;">pointers: ${this.pointers.length}</div>
+                <div style="background-color:#00000066;width:max-content;">mode: ${this.mode}</div>
+                <div style="background-color:#00000066;width:max-content;">target transform: ${this.style.transform}</div>
+                <div style="background-color:#00000066;width:max-content;">transition: ${this.style.transition}</div>
+                <div style="background-color:#00000066;width:max-content;">Zoom-Panel element client bbox: ${JSON.stringify(this.untransformedBoundingClientRect)}</div>
             `;
-            Object.assign(viewport.style, {
-                width: this.viewport.width + "px",
-                height: this.viewport.height + "px",
-                top: this.viewport.top + "px",
-                left: this.viewport.top + "px",
-            });
             if (canvas.width != this.untransformedBoundingClientRect.width)
                 canvas.setAttribute("width", this.untransformedBoundingClientRect.width + "px");
             if (canvas.height != this.untransformedBoundingClientRect.height)
