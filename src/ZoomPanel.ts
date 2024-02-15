@@ -229,6 +229,7 @@ class ZoomPanel extends HTMLElement{
     set manipulationAllowed(val){
         this._manipulationAllowed = val;
         if(!val){
+            debugger;
             this.pointers.length = 0;
             if(this.gesturing){
                 switch(this.mode){
@@ -352,6 +353,16 @@ class ZoomPanel extends HTMLElement{
         this.addEventListener("wheel",this.handleMouseWheelCapture,{capture:true})
 
         document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, {capture:true});
+
+        // Transition listeners
+        this.addEventListener("transitionend",e=>{
+            // Force browser to re-render at new scale
+            this.style.willChange = ""
+        })
+        this.addEventListener("transitioncancel",e=>{
+            // console.info("t cancel")
+            // this.style.willChange = ""
+        })
 
         //
         // Default behaviors
@@ -566,6 +577,10 @@ class ZoomPanel extends HTMLElement{
      */
     private pinchStart(e:PointerEvent){
         if(this.gesturing) return
+        if(!(e instanceof PointerEvent)){
+            console.error("pinchStart called without pointer event!")
+            return;
+        }
 
         this.gestureWillBegin("pinch",e)
 
@@ -631,6 +646,10 @@ class ZoomPanel extends HTMLElement{
      */
     private panStart(e:PointerEvent){
         if(this.gesturing) return
+        if(!(e instanceof PointerEvent)){
+            console.error("panStart called without pointer event!")
+            return;
+        }
 
         this.gestureWillBegin("pan",e)
         this.mode = "pan"
@@ -742,7 +761,7 @@ class ZoomPanel extends HTMLElement{
         /** The event where a gesture was detected */
         e:PointerEvent,
     ){
-        console.trace("GestureWillBegin",gesture,e)
+        console.info("GestureWillBegin",gesture,e)
         if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
 
         // Check for ongoing animations
@@ -771,12 +790,12 @@ class ZoomPanel extends HTMLElement{
                     transform.scale,
                 )
             }else{
-                console.trace("Transformation is not")
+                console.info("Transformation is not")
             }
             currentAnimations.forEach(a=>a.cancel());
             this.style.transition = "none"
         }else{
-            console.trace("No animations to interrupt")
+            console.info("No animations to interrupt")
         }
     }
 
@@ -784,7 +803,7 @@ class ZoomPanel extends HTMLElement{
         gesture:GestureType,
         e?:PointerEvent|WheelEvent
     ){
-        console.trace("gestureWillEnd",gesture,e)
+        console.info("gestureWillEnd",gesture,e)
         this.dispatchEvent(new TransformationEvent("manipulationWillEnd",e))
     }
 
@@ -796,7 +815,7 @@ class ZoomPanel extends HTMLElement{
         gesture:GestureType,
         e?:PointerEvent|WheelEvent,
     ){
-        console.trace("GestureDidEnd",gesture,e)
+        console.info("GestureDidEnd",gesture,e)
         // this.mode = "none"
         // this.style.willChange = ""
 
@@ -807,10 +826,15 @@ class ZoomPanel extends HTMLElement{
     // default behaviors
     //
 
-    handleManipulationEnd(){
+    // WARNING: This may run before all pointer/mouse events have been dealt with.
+    handleManipulationEnd(e:TransformationEvent){
         // TODO: Need a setting for whether to do this...
-        if(this._scale <= 1 ){
-            this.clearZoom()
+
+        // WARNING: Don't clear if there are still pointers -- there may be another gesture incoming.
+        if(this.pointers.length==0){
+            if(this._scale <= 1 ){
+                this.clearZoom()
+            }
         }
     }
 
@@ -1235,6 +1259,7 @@ class ZoomPanel extends HTMLElement{
      * */
     clearManipulation(){
         this.mode = "none"
+        debugger;
         this.pointers.length = 0;
         this._flushCachedBoundingRect();
         // make sure this is typed
@@ -1243,13 +1268,14 @@ class ZoomPanel extends HTMLElement{
     }
 
     /**
-     * Animate a return to scale 0 and no pan. Clear the pointers list just in case.
+     * Animate a return to scale 0 and no pan.
+     * TODO: This should just be frameChild(this)
      * @param duration MILLISECONDS
      * @param ease
      */
     clearZoom(duration?:number, ease?:string){
         // TODO: This should just be frame(self)!
-        this.clearManipulation();
+        // this.clearManipulation();
         if(!this.isTransformed){
             this.dispatchEvent(new CustomEvent("zoomDidClear"))
             return;

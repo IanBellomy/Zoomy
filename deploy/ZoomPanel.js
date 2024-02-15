@@ -81,6 +81,7 @@ class ZoomPanel extends HTMLElement {
     set manipulationAllowed(val) {
         this._manipulationAllowed = val;
         if (!val) {
+            debugger;
             this.pointers.length = 0;
             if (this.gesturing) {
                 switch (this.mode) {
@@ -183,6 +184,11 @@ class ZoomPanel extends HTMLElement {
         document.addEventListener("contextmenu", this.handlePointerUp, { capture: true });
         this.addEventListener("wheel", this.handleMouseWheelCapture, { capture: true });
         document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, { capture: true });
+        this.addEventListener("transitionend", e => {
+            this.style.willChange = "";
+        });
+        this.addEventListener("transitioncancel", e => {
+        });
         this.addEventListener("doubleTapEnd", this.handleDoubleTap.bind(this));
         this.addEventListener("manipulationEnd", this.handleManipulationEnd.bind(this));
     }
@@ -331,6 +337,10 @@ class ZoomPanel extends HTMLElement {
     pinchStart(e) {
         if (this.gesturing)
             return;
+        if (!(e instanceof PointerEvent)) {
+            console.error("pinchStart called without pointer event!");
+            return;
+        }
         this.gestureWillBegin("pinch", e);
         this.mode = "pinch";
         this.style.transition = "none";
@@ -366,6 +376,10 @@ class ZoomPanel extends HTMLElement {
     panStart(e) {
         if (this.gesturing)
             return;
+        if (!(e instanceof PointerEvent)) {
+            console.error("panStart called without pointer event!");
+            return;
+        }
         this.gestureWillBegin("pan", e);
         this.mode = "pan";
         this.style.transition = "none";
@@ -439,7 +453,7 @@ class ZoomPanel extends HTMLElement {
         this.dispatchEvent(new TransformationEvent("manipulationEnd"));
     }
     gestureWillBegin(gesture, e) {
-        console.trace("GestureWillBegin", gesture, e);
+        console.info("GestureWillBegin", gesture, e);
         if (this.clearZoomTimeoutID)
             clearTimeout(this.clearZoomTimeoutID);
         this.interruptTransitions();
@@ -456,25 +470,27 @@ class ZoomPanel extends HTMLElement {
                 this.setTransform(transform.translate.x, transform.translate.y, transform.scale);
             }
             else {
-                console.trace("Transformation is not");
+                console.info("Transformation is not");
             }
             currentAnimations.forEach(a => a.cancel());
             this.style.transition = "none";
         }
         else {
-            console.trace("No animations to interrupt");
+            console.info("No animations to interrupt");
         }
     }
     gestureWillEnd(gesture, e) {
-        console.trace("gestureWillEnd", gesture, e);
+        console.info("gestureWillEnd", gesture, e);
         this.dispatchEvent(new TransformationEvent("manipulationWillEnd", e));
     }
     gestureDidEnd(gesture, e) {
-        console.trace("GestureDidEnd", gesture, e);
+        console.info("GestureDidEnd", gesture, e);
     }
-    handleManipulationEnd() {
-        if (this._scale <= 1) {
-            this.clearZoom();
+    handleManipulationEnd(e) {
+        if (this.pointers.length == 0) {
+            if (this._scale <= 1) {
+                this.clearZoom();
+            }
         }
     }
     handleDoubleTap(e) {
@@ -743,12 +759,12 @@ class ZoomPanel extends HTMLElement {
     }
     clearManipulation() {
         this.mode = "none";
+        debugger;
         this.pointers.length = 0;
         this._flushCachedBoundingRect();
         this.dispatchEvent(new CustomEvent("didClearManipulation"));
     }
     clearZoom(duration, ease) {
-        this.clearManipulation();
         if (!this.isTransformed) {
             this.dispatchEvent(new CustomEvent("zoomDidClear"));
             return;
