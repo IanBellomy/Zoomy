@@ -1,5 +1,11 @@
+export function isRect(r) {
+    return typeof r.top == "number" &&
+        typeof r.left == "number" &&
+        typeof r.width == "number" &&
+        typeof r.height == "number";
+}
 export const GestureTypes = ["pinch", "pan", "doubleTap", "scroll"];
-export class GestureEvent extends Event {
+export class TransformationEvent extends Event {
     constructor(type, baseEvent) {
         super(type);
         this.baseEvent = baseEvent;
@@ -274,24 +280,17 @@ class ZoomPanel extends HTMLElement {
             e.preventDefault();
             e.stopImmediatePropagation();
             this.pinchEnd(e);
-            this.gestureDidEnd("pinch", e);
         }
         else if (this.pointers.length == 0 && this.mode == "pan") {
             e.preventDefault();
             e.stopImmediatePropagation();
             this.panEnd(e);
-            this.dispatchEvent(new CustomEvent("panEnd"));
-            this.gestureDidEnd("pan", e);
-            this.dispatchEvent(new CustomEvent("manipulationEnd"));
         }
         else if (this.pointers.length == 1 && this.mode == "pinch") {
             e.preventDefault();
             e.stopImmediatePropagation();
             this.pinchEnd(e);
-            this.dispatchEvent(new CustomEvent("pinchEnd"));
-            this.gestureDidEnd("pinch", e);
             this.panStart(this.pointers[0]);
-            this.dispatchEvent(new CustomEvent("panStart"));
         }
     }
     handleMouseWheelCapture(e) {
@@ -305,13 +304,13 @@ class ZoomPanel extends HTMLElement {
         if (this.mouseWheelTimeoutID)
             clearTimeout(this.mouseWheelTimeoutID);
         else
-            this.dispatchEvent(new GestureEvent("manipulationStart", e));
+            this.dispatchEvent(new TransformationEvent("manipulationStart", e));
         this.mouseWheelTimeoutID = setTimeout(() => {
             this.scrollEnd();
         }, 750);
     }
     doubleTap(e) {
-        this.dispatchEvent(new GestureEvent("doubleTapEnd", e));
+        this.dispatchEvent(new TransformationEvent("doubleTapEnd", e));
     }
     pinchStart(e) {
         if (this.gesturing)
@@ -328,8 +327,8 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = 0;
         this.gesturePositionChange.y = 0;
         this.pinchDistance = this.initialDistance;
-        this.dispatchEvent(new GestureEvent("pinchStart", e));
-        this.dispatchEvent(new GestureEvent("manipulationStart", e));
+        this.dispatchEvent(new TransformationEvent("pinchStart", e));
+        this.dispatchEvent(new TransformationEvent("manipulationStart", e));
     }
     pinchMove(e) {
         let distanceX = (this.pointers[1].clientX - this.pointers[0].clientX);
@@ -361,8 +360,8 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = 0;
         this.gesturePositionChange.y = 0;
         this.pinchDistance = this.initialDistance;
-        this.dispatchEvent(new GestureEvent("pinchStart", e));
-        this.dispatchEvent(new GestureEvent("manipulationStart", e));
+        this.dispatchEvent(new TransformationEvent("pinchStart", e));
+        this.dispatchEvent(new TransformationEvent("manipulationStart", e));
     }
     panMove(e) {
         this.pinchScale = 1;
@@ -393,8 +392,8 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange = { x: 0, y: 0 };
         this.pinchScale = undefined;
         this.style.willChange = "";
-        this.dispatchEvent(new GestureEvent("panEnd", e));
-        this.dispatchEvent(new GestureEvent("manipulationEnd", e));
+        this.dispatchEvent(new TransformationEvent("panEnd", e));
+        this.dispatchEvent(new TransformationEvent("manipulationEnd", e));
     }
     pinchEnd(e) {
         if (!this.gesturing)
@@ -410,8 +409,8 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange = { x: 0, y: 0 };
         this.pinchScale = undefined;
         this.style.willChange = "";
-        this.dispatchEvent(new GestureEvent("pinchEnd", e));
-        this.dispatchEvent(new GestureEvent("manipulationEnd", e));
+        this.dispatchEvent(new TransformationEvent("pinchEnd", e));
+        this.dispatchEvent(new TransformationEvent("manipulationEnd", e));
     }
     scrollEnd() {
         if (!this.gesturing)
@@ -421,8 +420,8 @@ class ZoomPanel extends HTMLElement {
         clearTimeout(this.mouseWheelTimeoutID);
         this.mouseWheelTimeoutID = undefined;
         this.style.willChange = "";
-        this.dispatchEvent(new GestureEvent("scrollEnd"));
-        this.dispatchEvent(new GestureEvent("manipulationEnd"));
+        this.dispatchEvent(new TransformationEvent("scrollEnd"));
+        this.dispatchEvent(new TransformationEvent("manipulationEnd"));
     }
     gestureWillBegin(gesture, e) {
         console.trace("GestureWillBegin", gesture, e);
@@ -432,7 +431,7 @@ class ZoomPanel extends HTMLElement {
     }
     gestureWillEnd(gesture, e) {
         console.trace("gestureWillEnd", gesture, e);
-        this.dispatchEvent(new GestureEvent("manipulationWillEnd", e));
+        this.dispatchEvent(new TransformationEvent("manipulationWillEnd", e));
     }
     gestureDidEnd(gesture, e) {
         console.trace("GestureDidEnd", gesture, e);
@@ -630,12 +629,19 @@ class ZoomPanel extends HTMLElement {
         bbox.height /= this.scale;
         return bbox;
     }
-    frame(rect, animate = true) {
+    frame(rect, animate = true, roundFactor = 100) {
+        if (!isRect(rect)) {
+            console.error("frame(rect:Rect,animate = true) rect param must be a Rect! Received", rect);
+            return;
+        }
         let x = rect.left + rect.width / 2;
         let y = rect.top + rect.height / 2;
         let maxWidthScale = this.untransformedBoundingClientRect.width / rect.width;
         let maxHeightScale = this.untransformedBoundingClientRect.height / rect.height;
         let scale = Math.min(maxWidthScale, maxHeightScale);
+        x = Math.floor(x * roundFactor) / roundFactor;
+        y = Math.floor(y * roundFactor) / roundFactor;
+        scale = Math.floor(scale * roundFactor) / roundFactor;
         this.pinchTo(scale, x, y, animate, true);
     }
     frameChild(el, padding = {
@@ -643,7 +649,8 @@ class ZoomPanel extends HTMLElement {
         right: 20,
         bottom: 20,
         left: 20,
-    }) {
+    }, animate = true, roundFactor = 10) {
+        var _a, _b, _c, _d;
         if (el == null || el == undefined) {
             console.warn("frameChild(null) no go");
             return;
@@ -655,6 +662,10 @@ class ZoomPanel extends HTMLElement {
             y: this.currentTransform.y
         };
         let currentScale = this.currentTransform.scale;
+        (_a = padding.top) !== null && _a !== void 0 ? _a : (padding.top = 0);
+        (_b = padding.left) !== null && _b !== void 0 ? _b : (padding.left = 0);
+        (_c = padding.right) !== null && _c !== void 0 ? _c : (padding.right = 0);
+        (_d = padding.bottom) !== null && _d !== void 0 ? _d : (padding.bottom = 0);
         bbox.top -= this.untransformedBoundingClientRect.top;
         bbox.left -= this.untransformedBoundingClientRect.left;
         bbox.top -= currentTranslation.y;
@@ -667,7 +678,7 @@ class ZoomPanel extends HTMLElement {
         bbox.left -= padding.left;
         bbox.height += padding.top + padding.bottom;
         bbox.width += padding.left + padding.right;
-        this.frame(bbox);
+        this.frame(bbox, animate, roundFactor);
     }
     focusChild(scale, el, animate = true, center = true, time = 0.5, easing = defaultEase) {
         if (el == null || el == undefined) {
@@ -720,10 +731,10 @@ class ZoomPanel extends HTMLElement {
         this.initialGesturePosition.x = 0;
         this.initialGesturePosition.y = 0;
         this.style.willChange = `transform`;
-        this.setTransform(0, 0, 1);
         this.style.transition = `all ${duration}ms`;
         if (ease)
             this.style.transitionTimingFunction = ease;
+        this.setTransform(0, 0, 1);
         if (this.clearZoomTimeoutID)
             clearTimeout(this.clearZoomTimeoutID);
         this.clearZoomTimeoutID = setTimeout(() => {
