@@ -420,26 +420,6 @@ class ZoomPanel extends HTMLElement{
                 }
             }
 
-
-         // check for double-tap-to-clear
-            // let currentTime = new Date().getTime();
-            //     // is the tap soon after a previous tap?
-            //     if(this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime ){
-            //         // is the tap
-
-            //         // clear pointer cache
-            //         this.pointers.length = 0
-            //         this.pointers.push(e)
-            //         e.stopImmediatePropagation()
-            //         e.preventDefault()
-            //         this.doubleTap(e)
-            //     }else{
-            //         this.lastPointTime = currentTime
-            //         this.lastPointPos.x = this.pointers[0].clientX
-            //         this.lastPointPos.y = this.pointers[0].clientY
-            //     }
-            // }
-
             if(this.gesturing){
                 e.preventDefault()
                 e.stopImmediatePropagation()
@@ -447,7 +427,7 @@ class ZoomPanel extends HTMLElement{
 
             if(this.pointers.length == 6){
                 if(
-                    !!this._debugElement &&
+                    !this._debugElement &&
                     confirm("Enable Zoom-panel debug mode?")
                 ){
                     this.debug();

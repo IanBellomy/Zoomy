@@ -237,7 +237,7 @@ class ZoomPanel extends HTMLElement {
             e.stopImmediatePropagation();
         }
         if (this.pointers.length == 6) {
-            if (!!this._debugElement &&
+            if (!this._debugElement &&
                 confirm("Enable Zoom-panel debug mode?")) {
                 this.debug();
             }
