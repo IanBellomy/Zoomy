@@ -21,6 +21,22 @@ export class TransformationEvent extends Event {
         super.stopImmediatePropagation();
     }
 }
+export function matrixStringToTransform(val) {
+    const values = val.split('(')[1].split(')')[0].split(',');
+    const a = parseFloat(values[0]);
+    const d = parseFloat(values[3]);
+    const tx = parseFloat(values[4]);
+    const ty = parseFloat(values[5]);
+    return {
+        scale: a == d ? a : undefined,
+        scaleX: a,
+        scaleY: d,
+        translate: {
+            x: tx,
+            y: ty
+        }
+    };
+}
 const defaultEaseTime = 0.65;
 const defaultEase = "cubic-bezier(0.375, 0.115, 0.000, 1.000);";
 class ZoomPanel extends HTMLElement {
@@ -125,11 +141,11 @@ class ZoomPanel extends HTMLElement {
         this.origin = { x: 0, y: 0 };
         this.initialCenter = { x: 0, y: 0 };
         this.initialDistance = 0;
-        this.initialScale = 1;
-        this.initialGesturePosition = { x: 0, y: 0 };
         this.pinchDistance = undefined;
-        this.gesturePositionChange = { x: 0, y: 0 };
+        this.initialScale = 1;
         this.pinchScale = undefined;
+        this.translationAtGestureStart = { x: 0, y: 0 };
+        this.gesturePositionChange = { x: 0, y: 0 };
         this._cachedBoundingBox = null;
         this.lastPointTime = undefined;
         this.lastPointPos = { x: 0, y: 0 };
@@ -340,11 +356,12 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = newCenterX - this.initialCenter.x * this.pinchScale;
         this.gesturePositionChange.y = newCenterY - this.initialCenter.y * this.pinchScale;
         let absoluteScale = this.pinchScale * this.initialScale;
-        let absoluteOffsetX = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale;
-        let absoluteOffsetY = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale;
+        let absoluteOffsetX = this.gesturePositionChange.x + this.translationAtGestureStart.x * this.pinchScale;
+        let absoluteOffsetY = this.gesturePositionChange.y + this.translationAtGestureStart.y * this.pinchScale;
         this.setTransform(absoluteOffsetX, absoluteOffsetY, absoluteScale);
         this.origin.x = newCenterX;
         this.origin.y = newCenterY;
+        this.dispatchEvent(new TransformationEvent("pinchChange", e));
     }
     panStart(e) {
         if (this.gesturing)
@@ -352,10 +369,9 @@ class ZoomPanel extends HTMLElement {
         this.gestureWillBegin("pan", e);
         this.mode = "pan";
         this.style.transition = "none";
-        let x = e.clientX;
-        let y = e.clientY;
-        this.initialCenter.x = x - this.untransformedBoundingClientRect.left;
-        this.initialCenter.y = y - this.untransformedBoundingClientRect.top;
+        this.initialCenter.x = e.clientX - this.untransformedBoundingClientRect.left;
+        this.initialCenter.y = e.clientY - this.untransformedBoundingClientRect.top;
+        this.initialScale = this.scale;
         this.pinchScale = 1;
         this.gesturePositionChange.x = 0;
         this.gesturePositionChange.y = 0;
@@ -365,18 +381,17 @@ class ZoomPanel extends HTMLElement {
     }
     panMove(e) {
         this.pinchScale = 1;
-        let x = e.clientX;
-        let y = e.clientY;
-        let newCenterX = x - this.untransformedBoundingClientRect.left;
-        let newCenterY = y - this.untransformedBoundingClientRect.top;
+        let newCenterX = e.clientX - this.untransformedBoundingClientRect.left;
+        let newCenterY = e.clientY - this.untransformedBoundingClientRect.top;
         this.gesturePositionChange.x = newCenterX - this.initialCenter.x * this.pinchScale;
         this.gesturePositionChange.y = newCenterY - this.initialCenter.y * this.pinchScale;
         let absoluteScale = this.pinchScale * this.initialScale;
-        let absoluteOffsetX = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale;
-        let absoluteOffsetY = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale;
+        let absoluteOffsetX = this.gesturePositionChange.x + this.translationAtGestureStart.x * this.pinchScale;
+        let absoluteOffsetY = this.gesturePositionChange.y + this.translationAtGestureStart.y * this.pinchScale;
         this.setTransform(absoluteOffsetX, absoluteOffsetY, absoluteScale);
         this.origin.x = newCenterX;
         this.origin.y = newCenterY;
+        this.dispatchEvent(new TransformationEvent("panChange", e));
     }
     panEnd(e) {
         if (!this.gesturing)
@@ -386,8 +401,8 @@ class ZoomPanel extends HTMLElement {
         this.initialCenter.x = undefined;
         this.initialCenter.y = undefined;
         this.initialScale *= this.pinchScale;
-        this.initialGesturePosition.x = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x;
-        this.initialGesturePosition.y = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y;
+        this.translationAtGestureStart.x = this.translationAtGestureStart.x * this.pinchScale + this.gesturePositionChange.x;
+        this.translationAtGestureStart.y = this.translationAtGestureStart.y * this.pinchScale + this.gesturePositionChange.y;
         this.pinchDistance = undefined;
         this.gesturePositionChange = { x: 0, y: 0 };
         this.pinchScale = undefined;
@@ -403,8 +418,8 @@ class ZoomPanel extends HTMLElement {
         this.initialCenter.x = undefined;
         this.initialCenter.y = undefined;
         this.initialScale *= this.pinchScale;
-        this.initialGesturePosition.x = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x;
-        this.initialGesturePosition.y = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y;
+        this.translationAtGestureStart.x = this.translationAtGestureStart.x * this.pinchScale + this.gesturePositionChange.x;
+        this.translationAtGestureStart.y = this.translationAtGestureStart.y * this.pinchScale + this.gesturePositionChange.y;
         this.pinchDistance = undefined;
         this.gesturePositionChange = { x: 0, y: 0 };
         this.pinchScale = undefined;
@@ -427,7 +442,28 @@ class ZoomPanel extends HTMLElement {
         console.trace("GestureWillBegin", gesture, e);
         if (this.clearZoomTimeoutID)
             clearTimeout(this.clearZoomTimeoutID);
+        this.interruptTransitions();
+        this.translationAtGestureStart.x = this.translation.x;
+        this.translationAtGestureStart.y = this.translation.y;
         this.style.willChange = "transform";
+    }
+    interruptTransitions() {
+        const currentAnimations = this.getAnimations();
+        if (currentAnimations.length) {
+            let matrixString = this.computedStyle.getPropertyValue("transform");
+            if (matrixString.includes("matrix")) {
+                let transform = matrixStringToTransform(matrixString);
+                this.setTransform(transform.translate.x, transform.translate.y, transform.scale);
+            }
+            else {
+                console.trace("Transformation is not");
+            }
+            currentAnimations.forEach(a => a.cancel());
+            this.style.transition = "none";
+        }
+        else {
+            console.trace("No animations to interrupt");
+        }
     }
     gestureWillEnd(gesture, e) {
         console.trace("gestureWillEnd", gesture, e);
@@ -461,7 +497,6 @@ class ZoomPanel extends HTMLElement {
         return Object.freeze(Object.apply({}, this.origin));
     }
     doPinch(withScale, atX, atY, animate = false, center = false) {
-        let defaultEaseTime = 15;
         this.style.transition = animate ? `all ${defaultEaseTime}s` : "none";
         this.style.transitionTimingFunction = defaultEase;
         this.initialCenter = {
@@ -476,16 +511,16 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = newCenterX - this.initialCenter.x * this.pinchScale;
         this.gesturePositionChange.y = newCenterY - this.initialCenter.y * this.pinchScale;
         let absoluteScale = this.pinchScale * this.initialScale;
-        let absoluteOffsetX = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale;
-        let absoluteOffsetY = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale;
+        let absoluteOffsetX = this.gesturePositionChange.x + this.translationAtGestureStart.x * this.pinchScale;
+        let absoluteOffsetY = this.gesturePositionChange.y + this.translationAtGestureStart.y * this.pinchScale;
         this.setTransform(absoluteOffsetX, absoluteOffsetY, absoluteScale);
         this.origin.x = newCenterX;
         this.origin.y = newCenterY;
         this.initialCenter.x = 0;
         this.initialCenter.y = 0;
         this.initialScale *= this.pinchScale;
-        this.initialGesturePosition.x = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x;
-        this.initialGesturePosition.y = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y;
+        this.translationAtGestureStart.x = this.translationAtGestureStart.x * this.pinchScale + this.gesturePositionChange.x;
+        this.translationAtGestureStart.y = this.translationAtGestureStart.y * this.pinchScale + this.gesturePositionChange.y;
     }
     pinchTo(scale, atX, atY, animate = false, center = false, time = defaultEaseTime, easing = defaultEase) {
         console.log("animate", animate, time, easing);
@@ -500,8 +535,8 @@ class ZoomPanel extends HTMLElement {
         this._scale = 1;
         this.initialScale = 1;
         this.initialDistance = 100;
-        this.initialGesturePosition.x = 0;
-        this.initialGesturePosition.y = 0;
+        this.translationAtGestureStart.x = 0;
+        this.translationAtGestureStart.y = 0;
         this._translation.x = 0;
         this._translation.y = 0;
         this.initialDistance = 100;
@@ -512,16 +547,16 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = newCenterX - this.initialCenter.x * this.pinchScale;
         this.gesturePositionChange.y = newCenterY - this.initialCenter.y * this.pinchScale;
         let absoluteScale = this.pinchScale * this.initialScale;
-        let absoluteOffsetX = this.gesturePositionChange.x + this.initialGesturePosition.x * this.pinchScale;
-        let absoluteOffsetY = this.gesturePositionChange.y + this.initialGesturePosition.y * this.pinchScale;
+        let absoluteOffsetX = this.gesturePositionChange.x + this.translationAtGestureStart.x * this.pinchScale;
+        let absoluteOffsetY = this.gesturePositionChange.y + this.translationAtGestureStart.y * this.pinchScale;
         this.setTransform(absoluteOffsetX, absoluteOffsetY, absoluteScale);
         this.origin.x = newCenterX;
         this.origin.y = newCenterY;
         this.initialCenter.x = 0;
         this.initialCenter.y = 0;
         this.initialScale *= this.pinchScale;
-        this.initialGesturePosition.x = this.initialGesturePosition.x * this.pinchScale + this.gesturePositionChange.x;
-        this.initialGesturePosition.y = this.initialGesturePosition.y * this.pinchScale + this.gesturePositionChange.y;
+        this.translationAtGestureStart.x = this.translationAtGestureStart.x * this.pinchScale + this.gesturePositionChange.x;
+        this.translationAtGestureStart.y = this.translationAtGestureStart.y * this.pinchScale + this.gesturePositionChange.y;
     }
     debug() {
         if (this._debugElement)
@@ -650,7 +685,6 @@ class ZoomPanel extends HTMLElement {
         bottom: 20,
         left: 20,
     }, animate = true, roundFactor = 10) {
-        var _a, _b, _c, _d;
         if (el == null || el == undefined) {
             console.warn("frameChild(null) no go");
             return;
@@ -662,10 +696,10 @@ class ZoomPanel extends HTMLElement {
             y: this.currentTransform.y
         };
         let currentScale = this.currentTransform.scale;
-        (_a = padding.top) !== null && _a !== void 0 ? _a : (padding.top = 0);
-        (_b = padding.left) !== null && _b !== void 0 ? _b : (padding.left = 0);
-        (_c = padding.right) !== null && _c !== void 0 ? _c : (padding.right = 0);
-        (_d = padding.bottom) !== null && _d !== void 0 ? _d : (padding.bottom = 0);
+        padding.top = padding.top || 0;
+        padding.left = padding.left || 0;
+        padding.right = padding.right || 0;
+        padding.bottom = padding.bottom || 0;
         bbox.top -= this.untransformedBoundingClientRect.top;
         bbox.left -= this.untransformedBoundingClientRect.left;
         bbox.top -= currentTranslation.y;
@@ -728,8 +762,8 @@ class ZoomPanel extends HTMLElement {
         this.initialCenter.x = 0;
         this.initialCenter.y = 0;
         this.initialScale = 1;
-        this.initialGesturePosition.x = 0;
-        this.initialGesturePosition.y = 0;
+        this.translationAtGestureStart.x = 0;
+        this.translationAtGestureStart.y = 0;
         this.style.willChange = `transform`;
         this.style.transition = `all ${duration}ms`;
         if (ease)
