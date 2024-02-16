@@ -287,10 +287,14 @@ class ZoomPanel extends HTMLElement{
         return this._cachedBoundingBox
     }
 
-    private _handleResize(){
-        // let previousVP = this.viewport;
+    private _handleResize(info:any){
+        // let vp = this.querySelector("#viewportCheck");
+        // this._cachedViewport = undefined
         this._flushCachedBoundingRect();
-        // this.frame(previousVP,false);
+        // the issue is we need to accommodate the shift in content scale :P
+        // this.frameChild(vp,{},false);
+        // re-cache
+        // this._cachedViewport = this.viewport;
     }
 
     private setTransform(x:number,y:number,scale:number){
@@ -318,12 +322,13 @@ class ZoomPanel extends HTMLElement{
         this.handlePointerMoveCapture = this.handlePointerMoveCapture.bind(this)
         this.handleMainWindowVisibilityChange = this.handleMainWindowVisibilityChange.bind(this)
         this.handleMouseWheelCapture = this.handleMouseWheelCapture.bind(this)
+        this.handleContextMenu = this.handleContextMenu.bind(this)
     }
 
     resizeObserver:ResizeObserver|null =
         ResizeObserver ?
             new ResizeObserver((e)=>{
-                this._handleResize();
+                this._handleResize(e);
             })
             : null
 
@@ -352,7 +357,7 @@ class ZoomPanel extends HTMLElement{
         // Should there be a global cache manager?
         document.addEventListener("pointerup",this.handlePointerUp,{capture:true})
         document.addEventListener("pointercancel",this.handlePointerUp,{capture:true})
-        document.addEventListener("contextmenu",this.handlePointerUp,{capture:true}) // context menu event swallows pointer event without cancel :(
+        document.addEventListener("contextmenu",this.handleContextMenu,{capture:true})
 
         // this.addEventListener("pointerout",handlePointerUp,{capture:true})        // should handle these?...  nope — can drag gesture out of zoom area. what
         // this.addEventListener("pointerleave",handlePointerUp,{capture:true})
@@ -426,6 +431,10 @@ class ZoomPanel extends HTMLElement{
     }
 
     handlePointerDownCapture(e:PointerEvent){
+        if(this.mode == "scroll"){
+            clearTimeout(this.mouseWheelTimeoutID)
+            debugger;
+        }
         if(!this.manipulationAllowed) return;
         if(e.pointerType == "pen" && this.ignoreStylus) return;
 
@@ -445,7 +454,12 @@ class ZoomPanel extends HTMLElement{
             // Added a finger during a pan gesture. [Can happen if we were pinching, then lifted, then placed another finger]
             this.panEnd(e)
             this.pinchStart(e)
-        }else if(this.pointers.length == 1 && this.mode == "none"){
+        }else if(
+            this.pointers.length == 1 &&
+            (this.mode == "none" || this.mode == "scroll")){
+
+            if(this.mode == "scroll") this.scrollEnd();
+
             let currentTime = new Date().getTime();
             // console.log("Double? ",(currentTime - this.lastPointTime))
             if(this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime ){
@@ -478,7 +492,7 @@ class ZoomPanel extends HTMLElement{
             e.preventDefault();
         }
 
-        if(this.pointers.length == 6){
+        if(this.pointers.length == 8){
             if(
                 !this._debugElement &&
                 confirm("Enable Zoom-panel debug mode?")
@@ -507,6 +521,10 @@ class ZoomPanel extends HTMLElement{
     }
 
     handlePointerMoveCapture(e:PointerEvent){
+        console.log(
+            "manipulationallowed " +this.manipulationAllowed,
+            "mode: " + this.mode
+        )
         if(!this.manipulationAllowed) return;
         if(e.pointerType == "pen" && this.ignoreStylus) return;
 
@@ -529,6 +547,8 @@ class ZoomPanel extends HTMLElement{
             this.panMove(e)
         }
 
+
+
         if(this.gesturing){
             e.preventDefault()
             e.stopImmediatePropagation()
@@ -545,6 +565,15 @@ class ZoomPanel extends HTMLElement{
             // So just handle it
             this.handlePointerUp(e);
         }
+    }
+
+    /**
+     * When the context menu opens it swallows subsequent pointer events.
+     * So let's just cut off whatever is going on.
+     * @param e
+     */
+    handleContextMenu(e:MouseEvent){
+        this.clearManipulation();
     }
 
     handlePointerUp(e:PointerEvent){
@@ -608,7 +637,7 @@ class ZoomPanel extends HTMLElement{
 
         this.mouseWheelTimeoutID = setTimeout(()=>{
             this.scrollEnd()
-        },750)
+        },750) // genuinely don't remember why this has to be here... I feel like there was some aesthetic issue with zooming out far and having the default snap back to scale 1 behavior feel weird.
     }
 
     /**
@@ -705,6 +734,7 @@ class ZoomPanel extends HTMLElement{
 
         // console.log("pan start",e)
         this.style.transition = "none"
+        this.style.willChange = "transform"
         // Fixme: If we triple click, the double tap will activate a transition, and the third will start a pan, mid transition, snapping the zoom to the final size.
         // It looks/feels gross. We might either check for triple tap, or set the transform to whatever it is mid transform.
 
@@ -796,8 +826,8 @@ class ZoomPanel extends HTMLElement{
     private scrollEnd(){
         if(!this.gesturing) return
         this.gestureWillEnd("scroll")
-        this.mode ="none"
         clearTimeout(this.mouseWheelTimeoutID);
+        this.mode ="none"
         this.mouseWheelTimeoutID = undefined
         this.style.willChange = ""
         this.dispatchEvent(new TransformationEvent("scrollEnd"))
@@ -1068,17 +1098,19 @@ class ZoomPanel extends HTMLElement{
              position : "absolute",
              display:"flex",
              flexDirection:"column",
-             top:"0px",
-             left:"0px",
+             top:"12px",
+             left:"12px",
              width : "0px",
              height : "0px",
              overflow:"visible",
              fontSize:"0.8rem",
-             transformOrigin:"0 0"
+             transformOrigin:"0 0",
+             boxSizing:"border-box"
          })
 
          // viewportCheck
          const viewportCheck = document.createElement("div")
+         viewportCheck.id = "viewportCheck"
          this._debugElement.appendChild(viewportCheck)
          Object.assign(viewportCheck.style,{
              pointerEvents:"none",
@@ -1124,9 +1156,10 @@ class ZoomPanel extends HTMLElement{
             vitals.innerHTML = `
                 <div style="background-color:#00000066;width:max-content;">Pointers: ${this.pointers.length}</div>
                 <div style="background-color:#00000066;width:max-content;">mode: ${this.mode}</div>
+                <div style="background-color:#00000066;width:max-content;">manipulation allowed: ${this.manipulationAllowed}</div>
                 <div style="background-color:#00000066;width:max-content;">target transform: ${this.style.transform}</div>
                 <div style="background-color:#00000066;width:max-content;">transition: ${this.style.transition}</div>
-                <div style="background-color:#00000066;width:max-content;">Zoom-Panel element client bbox: ${JSON.stringify(this.untransformedBoundingClientRect)}</div>
+                <div style="background-color:#00000066;width:max-content;">Zoom-Panel element client bbox:<br>${JSON.stringify(this.untransformedBoundingClientRect).split('"').join("").split(",").join("<br/>")}</div>
             `
 
             // canvas
@@ -1134,7 +1167,9 @@ class ZoomPanel extends HTMLElement{
             if(canvas.height != this.untransformedBoundingClientRect.height) canvas.setAttribute("height",this.untransformedBoundingClientRect.height + "px")
 
             Object.assign(canvas.style,{
-                transform:`translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1/this.scale}) `
+                transform:`translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1/this.scale}) `,
+                width:this.untransformedBoundingClientRect.width + "px",
+                height:this.untransformedBoundingClientRect.height +"px",
             });
 
             ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -1184,6 +1219,11 @@ class ZoomPanel extends HTMLElement{
     }
 
     /**
+     * We need the viewport dimensions on resize
+     */
+    _cachedViewport = this.viewport;
+
+    /**
      * A rect, representing the bounding box within the transformed element.
      * */
     get viewport(){
@@ -1197,6 +1237,8 @@ class ZoomPanel extends HTMLElement{
         bbox.top -= this.translation.y / this.scale;
         bbox.width /= this.scale;
         bbox.height /= this.scale;
+
+        this._cachedViewport = bbox
 
         return bbox;
     }
@@ -1329,12 +1371,15 @@ class ZoomPanel extends HTMLElement{
      * Any current pointer-touches on screen become dead to us.
      * */
     clearManipulation(){
-        this.mode = "none"
-        debugger;
+        console.log("willClearManipulation");
         this.pointers.length = 0;
+        switch(this.mode){
+            case "pinch": this.pinchEnd();
+            case "pan": this.panEnd();
+            case "scroll" : this.scrollEnd();
+        }
+        // reset bbox just in case
         this._flushCachedBoundingRect();
-        // make sure this is typed
-        // FIXME: Need to call respective pan/pinchEnd if happening!
         this.dispatchEvent(new CustomEvent("didClearManipulation"))
     }
 

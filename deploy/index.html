@@ -58,6 +58,7 @@
         var x,imgs,pe;
         window.onload = ()=>{   
             z = document.querySelector("zoom-panel");
+            window.zp = z;
             imgs = document.querySelectorAll("img")
             document.addEventListener("keydown",(e)=>{
                 if(e.key == "1"){
@@ -68,6 +69,10 @@
                     z.frameChild(imgs[2]);
                 }
             })    
+            imgs.forEach(img=>{
+                img.addEventListener("pointerdown",e=>e.preventDefault())
+                img.addEventListener("touchstart",e=>e.preventDefault())
+            })
             pe = document.querySelector("#pinned")   
             z.addEventListener("transform-update",(evt)=>{
                 // console.log(evt.target.currentTransform);

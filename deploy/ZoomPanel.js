@@ -115,7 +115,7 @@ class ZoomPanel extends HTMLElement {
         this.style.transition = tempTransition;
         return this._cachedBoundingBox;
     }
-    _handleResize() {
+    _handleResize(info) {
         this._flushCachedBoundingRect();
     }
     setTransform(x, y, scale) {
@@ -158,9 +158,10 @@ class ZoomPanel extends HTMLElement {
         this._manipulationAllowed = true;
         this.resizeObserver = ResizeObserver ?
             new ResizeObserver((e) => {
-                this._handleResize();
+                this._handleResize(e);
             })
             : null;
+        this._cachedViewport = this.viewport;
         this._handleResize = this._handleResize.bind(this);
         this._flushCachedBoundingRect = this._flushCachedBoundingRect.bind(this);
         this.handlePointerUp = this.handlePointerUp.bind(this);
@@ -169,6 +170,7 @@ class ZoomPanel extends HTMLElement {
         this.handlePointerMoveCapture = this.handlePointerMoveCapture.bind(this);
         this.handleMainWindowVisibilityChange = this.handleMainWindowVisibilityChange.bind(this);
         this.handleMouseWheelCapture = this.handleMouseWheelCapture.bind(this);
+        this.handleContextMenu = this.handleContextMenu.bind(this);
     }
     connectedCallback() {
         var _a;
@@ -182,7 +184,7 @@ class ZoomPanel extends HTMLElement {
         this.addEventListener("pointermove", this.handlePointerMoveCapture, { capture: true });
         document.addEventListener("pointerup", this.handlePointerUp, { capture: true });
         document.addEventListener("pointercancel", this.handlePointerUp, { capture: true });
-        document.addEventListener("contextmenu", this.handlePointerUp, { capture: true });
+        document.addEventListener("contextmenu", this.handleContextMenu, { capture: true });
         this.addEventListener("wheel", this.handleMouseWheelCapture, { capture: true });
         document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, { capture: true });
         this.addEventListener("transitionend", e => {
@@ -224,6 +226,10 @@ class ZoomPanel extends HTMLElement {
         document.removeEventListener("pointerup", this.handlePointerUp, { capture: true });
     }
     handlePointerDownCapture(e) {
+        if (this.mode == "scroll") {
+            clearTimeout(this.mouseWheelTimeoutID);
+            debugger;
+        }
         if (!this.manipulationAllowed)
             return;
         if (e.pointerType == "pen" && this.ignoreStylus)
@@ -236,7 +242,10 @@ class ZoomPanel extends HTMLElement {
             this.panEnd(e);
             this.pinchStart(e);
         }
-        else if (this.pointers.length == 1 && this.mode == "none") {
+        else if (this.pointers.length == 1 &&
+            (this.mode == "none" || this.mode == "scroll")) {
+            if (this.mode == "scroll")
+                this.scrollEnd();
             let currentTime = new Date().getTime();
             if (this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime) {
                 this.pointers.length = 0;
@@ -263,7 +272,7 @@ class ZoomPanel extends HTMLElement {
         if (e.pointerType == "touch" && this.ignoreStylus) {
             e.preventDefault();
         }
-        if (this.pointers.length == 6) {
+        if (this.pointers.length == 8) {
             if (!this._debugElement &&
                 confirm("Enable Zoom-panel debug mode?")) {
                 this.debug();
@@ -285,6 +294,7 @@ class ZoomPanel extends HTMLElement {
         }
     }
     handlePointerMoveCapture(e) {
+        console.log("manipulationallowed " + this.manipulationAllowed, "mode: " + this.mode);
         if (!this.manipulationAllowed)
             return;
         if (e.pointerType == "pen" && this.ignoreStylus)
@@ -318,6 +328,9 @@ class ZoomPanel extends HTMLElement {
             e.stopImmediatePropagation();
             this.handlePointerUp(e);
         }
+    }
+    handleContextMenu(e) {
+        this.clearManipulation();
     }
     handlePointerUp(e) {
         if (e.pointerType == "pen" && this.ignoreStylus)
@@ -424,6 +437,7 @@ class ZoomPanel extends HTMLElement {
         this.gestureWillBegin("pan", e);
         this.mode = "pan";
         this.style.transition = "none";
+        this.style.willChange = "transform";
         this.initialCenter.x = e.clientX - this.untransformedBoundingClientRect.left;
         this.initialCenter.y = e.clientY - this.untransformedBoundingClientRect.top;
         this.initialScale = this.scale;
@@ -486,8 +500,8 @@ class ZoomPanel extends HTMLElement {
         if (!this.gesturing)
             return;
         this.gestureWillEnd("scroll");
-        this.mode = "none";
         clearTimeout(this.mouseWheelTimeoutID);
+        this.mode = "none";
         this.mouseWheelTimeoutID = undefined;
         this.style.willChange = "";
         this.dispatchEvent(new TransformationEvent("scrollEnd"));
@@ -639,15 +653,17 @@ class ZoomPanel extends HTMLElement {
             position: "absolute",
             display: "flex",
             flexDirection: "column",
-            top: "0px",
-            left: "0px",
+            top: "12px",
+            left: "12px",
             width: "0px",
             height: "0px",
             overflow: "visible",
             fontSize: "0.8rem",
-            transformOrigin: "0 0"
+            transformOrigin: "0 0",
+            boxSizing: "border-box"
         });
         const viewportCheck = document.createElement("div");
+        viewportCheck.id = "viewportCheck";
         this._debugElement.appendChild(viewportCheck);
         Object.assign(viewportCheck.style, {
             pointerEvents: "none",
@@ -685,16 +701,19 @@ class ZoomPanel extends HTMLElement {
             vitals.innerHTML = `
                 <div style="background-color:#00000066;width:max-content;">Pointers: ${this.pointers.length}</div>
                 <div style="background-color:#00000066;width:max-content;">mode: ${this.mode}</div>
+                <div style="background-color:#00000066;width:max-content;">manipulation allowed: ${this.manipulationAllowed}</div>
                 <div style="background-color:#00000066;width:max-content;">target transform: ${this.style.transform}</div>
                 <div style="background-color:#00000066;width:max-content;">transition: ${this.style.transition}</div>
-                <div style="background-color:#00000066;width:max-content;">Zoom-Panel element client bbox: ${JSON.stringify(this.untransformedBoundingClientRect)}</div>
+                <div style="background-color:#00000066;width:max-content;">Zoom-Panel element client bbox:<br>${JSON.stringify(this.untransformedBoundingClientRect).split('"').join("").split(",").join("<br/>")}</div>
             `;
             if (canvas.width != this.untransformedBoundingClientRect.width)
                 canvas.setAttribute("width", this.untransformedBoundingClientRect.width + "px");
             if (canvas.height != this.untransformedBoundingClientRect.height)
                 canvas.setAttribute("height", this.untransformedBoundingClientRect.height + "px");
             Object.assign(canvas.style, {
-                transform: `translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1 / this.scale}) `
+                transform: `translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1 / this.scale}) `,
+                width: this.untransformedBoundingClientRect.width + "px",
+                height: this.untransformedBoundingClientRect.height + "px",
             });
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 4;
@@ -735,6 +754,7 @@ class ZoomPanel extends HTMLElement {
         bbox.top -= this.translation.y / this.scale;
         bbox.width /= this.scale;
         bbox.height /= this.scale;
+        this._cachedViewport = bbox;
         return bbox;
     }
     frame(rect, animate = true, roundFactor = 100) {
@@ -815,9 +835,13 @@ class ZoomPanel extends HTMLElement {
         this.pinchTo(scale, centerOn.x, centerOn.y, animate, center, time, easing);
     }
     clearManipulation() {
-        this.mode = "none";
-        debugger;
+        console.log("willClearManipulation");
         this.pointers.length = 0;
+        switch (this.mode) {
+            case "pinch": this.pinchEnd();
+            case "pan": this.panEnd();
+            case "scroll": this.scrollEnd();
+        }
         this._flushCachedBoundingRect();
         this.dispatchEvent(new CustomEvent("didClearManipulation"));
     }
