@@ -24,10 +24,10 @@ export function isRect(r:any):r is Rect{
 
 export type TransformationReason = "frame"|"gesture"
 export type TransformationState = "Start"|"Change"|"End"
-export type TransformationEventType = `${TransformationReason}${TransformationState}`
+export type TransformationEventType = string;// `${TransformationReason}${TransformationState}`
 export const GestureTypes = ["pinch","pan","doubleTap","scroll"] as const;
 export type GestureType = typeof GestureTypes[number]|"manipulation";
-export type GestureEventType = `${GestureType}${TransformationState}`|`${GestureType}Will${TransformationState}`
+export type GestureEventType = string;//`${GestureType}${TransformationState}`|`${GestureType}Will${TransformationState}`
 export type ZoomPanelEventType = TransformationEvent|"didClearManipulation"|"zoomDidClear"
 export class TransformationEvent<BE extends PointerEvent|WheelEvent = PointerEvent|WheelEvent> extends Event{
     constructor(
@@ -102,6 +102,16 @@ class ZoomPanel extends HTMLElement{
      * If true, a stylus-pointer-down event that bubbles up will be treated as the start of a pan gesture.
      */
     panWithPen = false;
+
+    /**
+     * If true, stylus-events are completely ignored.
+     */
+    ignoreStylus = false;
+
+    /**
+     * If true, touch events will captured and not passed down to children of the zoom panel
+     * */
+    captureTouch = false
 
     /** A cache of pointerEvents active on this element; alternative to touchEvent.touches  */
     private pointers:PointerEvent[] = []
@@ -219,8 +229,11 @@ class ZoomPanel extends HTMLElement{
     /** Used for the mouseWheelTimeout complete */
     private mouseWheelTimeoutID = undefined
 
-    /** clearZoom uses a delay to dispatch a zoomClear event */
-    private clearZoomTimeoutID = undefined
+    /**
+     * clearZoom uses a delay to dispatch a zoomClear event
+     * @deprecated
+     * */
+    // private clearZoomTimeoutID = undefined
 
     private _manipulationAllowed = true;
 
@@ -331,6 +344,7 @@ class ZoomPanel extends HTMLElement{
         // if a pointerdown event bubbles up into the zoom panel, un-captured, then the user may want to pan...
         this.addEventListener("pointerdown",this.handlePointerDown)
 
+        // ...
         this.addEventListener("pointermove",this.handlePointerMoveCapture,{capture:true})
 
 
@@ -356,8 +370,29 @@ class ZoomPanel extends HTMLElement{
 
         // Transition listeners
         this.addEventListener("transitionend",e=>{
+            console.info("transition ended",this.translation,this.scale)
             // Force browser to re-render at new scale
             this.style.willChange = ""
+
+            // Check for zoom clear
+            if(
+                this.scale == 1 &&
+                this.translation.x == 0 &&
+                this.translation.y == 0
+            ){
+                // clear shit :P
+                this._scale    = 1;
+                this._translation.x = 0
+                this._translation.y = 0
+                this.origin.x = 0;
+                this.origin.y = 0;
+                this.initialCenter.x = 0
+                this.initialCenter.y = 0
+                this.initialScale    = 1
+                this.translationAtGestureStart.x  = 0
+                this.translationAtGestureStart.y  = 0
+                this.dispatchEvent(new CustomEvent("zoomDidClear"))
+            }
         })
         this.addEventListener("transitioncancel",e=>{
             // console.info("t cancel")
@@ -392,51 +427,70 @@ class ZoomPanel extends HTMLElement{
 
     handlePointerDownCapture(e:PointerEvent){
         if(!this.manipulationAllowed) return;
-            // update cached pointers
-            this.pointers.push(e)
+        if(e.pointerType == "pen" && this.ignoreStylus) return;
 
-            if(this.pointers.length == 2 && this.mode=="none"){
-                // managed to put down two fingers at the "same" time, e.g. between event-loop ticks.
-                this.pinchStart(e)
-            }else if(this.pointers.length == 2 && this.mode=="pan"){
-                // Added a finger during a pan gesture. [Can happen if we were pinching, then lifted, then placed another finger]
-                this.panEnd(e)
-                this.pinchStart(e)
-            }else if(this.pointers.length == 1 && this.mode == "none"){
-                let currentTime = new Date().getTime();
-                // console.log("Double? ",(currentTime - this.lastPointTime))
-                if(this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime ){
-                    // clear pointer cache
-                    this.pointers.length = 0
-                    // add the pointer back in
-                    this.pointers.push(e)
-                    e.stopImmediatePropagation()
-                    e.preventDefault()
-                    this.doubleTap(e)
-                }else{
-                    this.lastPointTime = currentTime
-                    this.lastPointPos.x = this.pointers[0].clientX
-                    this.lastPointPos.y = this.pointers[0].clientY
-                }
-            }
+        // update cached pointers
+        this.pointers.push(e)
 
-            if(this.gesturing){
-                e.preventDefault()
+        // FIXME: We should cache the pointers somehow and apply them at the end to make sure nothing can mutates the pointer array while we're still working through it...
+        // For example, if the user touches during a non-gesture animated pinch we'll 'cancel that gesture' and start another with the new event.
+        // But the default behavior of gesture end is to check for being zoomed out too far and then clear zoom, which ideally would have a clearManipulation call
+        // But clearManipulation will clear all the pointers, leaving us with none, and the pinchStart will fail.
+        // But the gesture logic is looking at the pointer array, so we need to add first.
+
+        if(this.pointers.length == 2 && this.mode=="none"){
+            // managed to put down two fingers at the "same" time, e.g. between event-loop ticks.
+            this.pinchStart(e)
+        }else if(this.pointers.length == 2 && this.mode=="pan"){
+            // Added a finger during a pan gesture. [Can happen if we were pinching, then lifted, then placed another finger]
+            this.panEnd(e)
+            this.pinchStart(e)
+        }else if(this.pointers.length == 1 && this.mode == "none"){
+            let currentTime = new Date().getTime();
+            // console.log("Double? ",(currentTime - this.lastPointTime))
+            if(this.lastPointTime && (currentTime - this.lastPointTime) < this.doubleTapTime ){
+                // clear pointer cache
+                this.pointers.length = 0
+                // add the pointer back in
+                this.pointers.push(e)
                 e.stopImmediatePropagation()
+                e.preventDefault()
+                this.doubleTap(e)
+            }else{
+                this.lastPointTime = currentTime
+                this.lastPointPos.x = this.pointers[0].clientX
+                this.lastPointPos.y = this.pointers[0].clientY
             }
+        }
 
-            if(this.pointers.length == 6){
-                if(
-                    !this._debugElement &&
-                    confirm("Enable Zoom-panel debug mode?")
-                ){
-                    this.debug();
-                }
+        if(this.gesturing){
+            e.preventDefault()
+            e.stopImmediatePropagation()
+        }
+
+        if(e.pointerType == "touch" && this.captureTouch){
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation()
+        }
+
+        if(e.pointerType == "touch" && this.ignoreStylus){
+            e.preventDefault();
+        }
+
+        if(this.pointers.length == 6){
+            if(
+                !this._debugElement &&
+                confirm("Enable Zoom-panel debug mode?")
+            ){
+                this.debug();
             }
+        }
     }
 
     handlePointerDown(e:PointerEvent){
         if(!this.manipulationAllowed) return;
+        if(e.pointerType == "pen" && this.ignoreStylus) return;
 
         // ignore input if flags say so
         if( (e.pointerType == "touch" && this.panRequiresTwoFingers) ||
@@ -454,33 +508,48 @@ class ZoomPanel extends HTMLElement{
 
     handlePointerMoveCapture(e:PointerEvent){
         if(!this.manipulationAllowed) return;
-            // console.log("zoom pointermove ",this.pointers)
-            // update cached pointers
-            for(let i = 0; i < this.pointers.length; i++){
-				if(this.pointers[i].pointerId == e.pointerId) this.pointers[i] = e
-			}
+        if(e.pointerType == "pen" && this.ignoreStylus) return;
 
-            if(this.pointers.length >= 2 && this.mode=="none"){
-                // two fingers came out of nowhere!
-                this.pinchStart(e)
-            } else if(this.pointers.length >= 2 && this.mode =="pinch"){
-                this.pinchMove(e)
-            } else if(this.pointers.length >= 2 && this.mode == "pan"){
-                // finger came out of nowhere!
-                this.pinchEnd(e)
-                this.panStart(e)
-            }else if(this.pointers.length == 1 && this.mode == "pan"){
-                // this.dispatchEvent(new CustomEvent("manipulationStart"))         // ?!
-                this.panMove(e)
-            }
+        // update cached pointers
+        for(let i = 0; i < this.pointers.length; i++){
+            if(this.pointers[i].pointerId == e.pointerId) this.pointers[i] = e
+        }
 
-            if(this.gesturing){
-                e.preventDefault()
-                e.stopImmediatePropagation()
-            }
+        if(this.pointers.length >= 2 && this.mode=="none"){
+            // two fingers came out of nowhere!
+            this.pinchStart(e)
+        } else if(this.pointers.length >= 2 && this.mode =="pinch"){
+            this.pinchMove(e)
+        } else if(this.pointers.length >= 2 && this.mode == "pan"){
+            // finger came out of nowhere!
+            this.pinchEnd(e)
+            this.panStart(e)
+        }else if(this.pointers.length == 1 && this.mode == "pan"){
+            // this.dispatchEvent(new CustomEvent("manipulationStart"))         // ?!
+            this.panMove(e)
+        }
+
+        if(this.gesturing){
+            e.preventDefault()
+            e.stopImmediatePropagation()
+        }
+    }
+
+    handlePointerUpCapture(e:PointerEvent){
+        if(e.pointerType == "touch" && this.captureTouch){
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation()
+
+            // If we capture touches on the way down, the'll never bubble up.
+            // So just handle it
+            this.handlePointerUp(e);
+        }
     }
 
     handlePointerUp(e:PointerEvent){
+        if(e.pointerType == "pen" && this.ignoreStylus) return;
+
         // update cached pointers
         let removedPointerEvent = null
         for(let i = 0; i < this.pointers.length; i++){
@@ -742,7 +811,8 @@ class ZoomPanel extends HTMLElement{
         e:PointerEvent,
     ){
         console.info("GestureWillBegin",gesture,e)
-        if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
+
+        // if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
 
         // Check for ongoing animations
         this.interruptTransitions();
@@ -789,16 +859,13 @@ class ZoomPanel extends HTMLElement{
 
     /**
      * Post pinch or pan cleanup
-     * @deprecated Either gesture should handle that in their respective end method
+     * @deprecated The pan/pinch end methods are just dispatching their own manipulation end events
      * */
     private gestureDidEnd(
         gesture:GestureType,
         e?:PointerEvent|WheelEvent,
     ){
         console.info("GestureDidEnd",gesture,e)
-        // this.mode = "none"
-        // this.style.willChange = ""
-
         // this.dispatchEvent(new GestureEvent("manipulationEnd",e))
     }
 
@@ -819,7 +886,9 @@ class ZoomPanel extends HTMLElement{
     }
 
     handleDoubleTap(e:TransformationEvent<PointerEvent>){
+        // if(e.pointerType == "pen" && this.ignoreStylus) return;
         if(this._scale > 1){
+            // TODO: this should be frameChild(this)
             this.clearZoom()
         }else{
             let x = e.baseEvent.clientX
@@ -1008,6 +1077,21 @@ class ZoomPanel extends HTMLElement{
              transformOrigin:"0 0"
          })
 
+         // viewportCheck
+         const viewportCheck = document.createElement("div")
+         this._debugElement.appendChild(viewportCheck)
+         Object.assign(viewportCheck.style,{
+             pointerEvents:"none",
+             position : "absolute",
+             display:"flex",
+             flexDirection:"column",
+             overflow:"visible",
+             transformOrigin:"0 0",
+             outline:"24px solid #ff0000",
+             outlineOffset:"-12px",
+             opacity:0.4,
+         })
+
         // canvas
         const canvas = document.createElement("canvas")
         canvas.setAttribute("width",this.untransformedBoundingClientRect.width + "px")
@@ -1038,7 +1122,7 @@ class ZoomPanel extends HTMLElement{
             });
 
             vitals.innerHTML = `
-                <div style="background-color:#00000066;width:max-content;">pointers: ${this.pointers.length}</div>
+                <div style="background-color:#00000066;width:max-content;">Pointers: ${this.pointers.length}</div>
                 <div style="background-color:#00000066;width:max-content;">mode: ${this.mode}</div>
                 <div style="background-color:#00000066;width:max-content;">target transform: ${this.style.transform}</div>
                 <div style="background-color:#00000066;width:max-content;">transition: ${this.style.transition}</div>
@@ -1069,6 +1153,12 @@ class ZoomPanel extends HTMLElement{
                 )
             })
 
+            let viewport = this.viewport;
+            viewportCheck.style.width = this.viewport.width + "px";
+            viewportCheck.style.height = this.viewport.height + "px";
+            viewportCheck.style.top = viewport.top + "px";
+            viewportCheck.style.left = viewport.left + "px";
+
             window.requestAnimationFrame(debugLoop)
         }
         window.requestAnimationFrame(debugLoop);
@@ -1093,10 +1183,11 @@ class ZoomPanel extends HTMLElement{
         }
     }
 
-    /** A rect representing the bounding box within the transformed element*/
+    /**
+     * A rect, representing the bounding box within the transformed element.
+     * */
     get viewport(){
         let bbox:Rect = JSON.parse(JSON.stringify(this.untransformedBoundingClientRect));
-
 
         /** We need the bbox in relation to this element */
         bbox.top = 0;
@@ -1249,44 +1340,21 @@ class ZoomPanel extends HTMLElement{
 
     /**
      * Animate a return to scale 0 and no pan.
-     * TODO: This should just be frameChild(this)
+     * This exists (rather than a frame(boundingBox)) for bespoke duration and ease and the need to fire off a zoomDidClear event if it's already cleared :P
      * @param duration MILLISECONDS
      * @param ease
      */
     clearZoom(duration?:number, ease?:string){
-        // TODO: This should just be frame(self)!
-        // this.clearManipulation();
+        // this.clearManipulation()?; // Issue here. If we switch from an animated pinch to a pan, clear manipulation will clear pointers we're about to use...
         if(!this.isTransformed){
             this.dispatchEvent(new CustomEvent("zoomDidClear"))
             return;
         }
         duration = duration == undefined ?  defaultEaseTime * 1000 : duration;
-        this._scale    = 1;
-        this._translation.x = 0
-        this._translation.y = 0
-        this.origin.x = 0;
-        this.origin.y = 0;
-        this.initialCenter.x = 0
-        this.initialCenter.y = 0
-        this.initialScale    = 1
-        this.translationAtGestureStart.x  = 0
-        this.translationAtGestureStart.y  = 0
         this.style.willChange = `transform`
         this.style.transition = `all ${duration}ms`
         if(ease) this.style.transitionTimingFunction = ease;
         this.setTransform(0,0,1)
-
-        // TODO? use transitionEnd event handler?
-        if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
-        this.clearZoomTimeoutID = setTimeout(()=>{
-            if(!this.gesturing){
-                this.style.willChange = ``
-                this.clearManipulation();
-                this._flushCachedBoundingRect();
-            }
-            this.dispatchEvent(new CustomEvent("zoomDidClear"))
-            //else // warn -- clearZoom timeout was not cleared properly
-        },duration + 50)
     }
 
 

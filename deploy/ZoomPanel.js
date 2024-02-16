@@ -133,6 +133,8 @@ class ZoomPanel extends HTMLElement {
         this.panRequiresTwoFingers = true;
         this.panWithMouse = true;
         this.panWithPen = false;
+        this.ignoreStylus = false;
+        this.captureTouch = false;
         this.pointers = [];
         this.mode = "none";
         this._scale = 1;
@@ -153,7 +155,6 @@ class ZoomPanel extends HTMLElement {
         this.doubleTapTime = 300;
         this.centerOnDoubleTap = false;
         this.mouseWheelTimeoutID = undefined;
-        this.clearZoomTimeoutID = undefined;
         this._manipulationAllowed = true;
         this.resizeObserver = ResizeObserver ?
             new ResizeObserver((e) => {
@@ -185,7 +186,23 @@ class ZoomPanel extends HTMLElement {
         this.addEventListener("wheel", this.handleMouseWheelCapture, { capture: true });
         document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, { capture: true });
         this.addEventListener("transitionend", e => {
+            console.info("transition ended", this.translation, this.scale);
             this.style.willChange = "";
+            if (this.scale == 1 &&
+                this.translation.x == 0 &&
+                this.translation.y == 0) {
+                this._scale = 1;
+                this._translation.x = 0;
+                this._translation.y = 0;
+                this.origin.x = 0;
+                this.origin.y = 0;
+                this.initialCenter.x = 0;
+                this.initialCenter.y = 0;
+                this.initialScale = 1;
+                this.translationAtGestureStart.x = 0;
+                this.translationAtGestureStart.y = 0;
+                this.dispatchEvent(new CustomEvent("zoomDidClear"));
+            }
         });
         this.addEventListener("transitioncancel", e => {
         });
@@ -208,6 +225,8 @@ class ZoomPanel extends HTMLElement {
     }
     handlePointerDownCapture(e) {
         if (!this.manipulationAllowed)
+            return;
+        if (e.pointerType == "pen" && this.ignoreStylus)
             return;
         this.pointers.push(e);
         if (this.pointers.length == 2 && this.mode == "none") {
@@ -236,6 +255,14 @@ class ZoomPanel extends HTMLElement {
             e.preventDefault();
             e.stopImmediatePropagation();
         }
+        if (e.pointerType == "touch" && this.captureTouch) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+        if (e.pointerType == "touch" && this.ignoreStylus) {
+            e.preventDefault();
+        }
         if (this.pointers.length == 6) {
             if (!this._debugElement &&
                 confirm("Enable Zoom-panel debug mode?")) {
@@ -245,6 +272,8 @@ class ZoomPanel extends HTMLElement {
     }
     handlePointerDown(e) {
         if (!this.manipulationAllowed)
+            return;
+        if (e.pointerType == "pen" && this.ignoreStylus)
             return;
         if ((e.pointerType == "touch" && this.panRequiresTwoFingers) ||
             (e.pointerType == "mouse" && !this.panWithMouse) ||
@@ -257,6 +286,8 @@ class ZoomPanel extends HTMLElement {
     }
     handlePointerMoveCapture(e) {
         if (!this.manipulationAllowed)
+            return;
+        if (e.pointerType == "pen" && this.ignoreStylus)
             return;
         for (let i = 0; i < this.pointers.length; i++) {
             if (this.pointers[i].pointerId == e.pointerId)
@@ -280,7 +311,17 @@ class ZoomPanel extends HTMLElement {
             e.stopImmediatePropagation();
         }
     }
+    handlePointerUpCapture(e) {
+        if (e.pointerType == "touch" && this.captureTouch) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            this.handlePointerUp(e);
+        }
+    }
     handlePointerUp(e) {
+        if (e.pointerType == "pen" && this.ignoreStylus)
+            return;
         let removedPointerEvent = null;
         for (let i = 0; i < this.pointers.length; i++) {
             if (this.pointers[i].pointerId == e.pointerId)
@@ -454,8 +495,6 @@ class ZoomPanel extends HTMLElement {
     }
     gestureWillBegin(gesture, e) {
         console.info("GestureWillBegin", gesture, e);
-        if (this.clearZoomTimeoutID)
-            clearTimeout(this.clearZoomTimeoutID);
         this.interruptTransitions();
         this.translationAtGestureStart.x = this.translation.x;
         this.translationAtGestureStart.y = this.translation.y;
@@ -608,6 +647,19 @@ class ZoomPanel extends HTMLElement {
             fontSize: "0.8rem",
             transformOrigin: "0 0"
         });
+        const viewportCheck = document.createElement("div");
+        this._debugElement.appendChild(viewportCheck);
+        Object.assign(viewportCheck.style, {
+            pointerEvents: "none",
+            position: "absolute",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "visible",
+            transformOrigin: "0 0",
+            outline: "24px solid #ff0000",
+            outlineOffset: "-12px",
+            opacity: 0.4,
+        });
         const canvas = document.createElement("canvas");
         canvas.setAttribute("width", this.untransformedBoundingClientRect.width + "px");
         canvas.setAttribute("height", this.untransformedBoundingClientRect.height + "px");
@@ -631,7 +683,7 @@ class ZoomPanel extends HTMLElement {
                 transform: `translate(${-this.translation.x / this.scale}px, ${-this.translation.y / this.scale}px) scale(${1 / this.scale}) `
             });
             vitals.innerHTML = `
-                <div style="background-color:#00000066;width:max-content;">pointers: ${this.pointers.length}</div>
+                <div style="background-color:#00000066;width:max-content;">Pointers: ${this.pointers.length}</div>
                 <div style="background-color:#00000066;width:max-content;">mode: ${this.mode}</div>
                 <div style="background-color:#00000066;width:max-content;">target transform: ${this.style.transform}</div>
                 <div style="background-color:#00000066;width:max-content;">transition: ${this.style.transition}</div>
@@ -653,6 +705,11 @@ class ZoomPanel extends HTMLElement {
                     : 20;
                 ctx.strokeRect(p.clientX - size / 2, p.clientY - size / 2, size, size);
             });
+            let viewport = this.viewport;
+            viewportCheck.style.width = this.viewport.width + "px";
+            viewportCheck.style.height = this.viewport.height + "px";
+            viewportCheck.style.top = viewport.top + "px";
+            viewportCheck.style.left = viewport.left + "px";
             window.requestAnimationFrame(debugLoop);
         };
         window.requestAnimationFrame(debugLoop);
@@ -770,31 +827,11 @@ class ZoomPanel extends HTMLElement {
             return;
         }
         duration = duration == undefined ? defaultEaseTime * 1000 : duration;
-        this._scale = 1;
-        this._translation.x = 0;
-        this._translation.y = 0;
-        this.origin.x = 0;
-        this.origin.y = 0;
-        this.initialCenter.x = 0;
-        this.initialCenter.y = 0;
-        this.initialScale = 1;
-        this.translationAtGestureStart.x = 0;
-        this.translationAtGestureStart.y = 0;
         this.style.willChange = `transform`;
         this.style.transition = `all ${duration}ms`;
         if (ease)
             this.style.transitionTimingFunction = ease;
         this.setTransform(0, 0, 1);
-        if (this.clearZoomTimeoutID)
-            clearTimeout(this.clearZoomTimeoutID);
-        this.clearZoomTimeoutID = setTimeout(() => {
-            if (!this.gesturing) {
-                this.style.willChange = ``;
-                this.clearManipulation();
-                this._flushCachedBoundingRect();
-            }
-            this.dispatchEvent(new CustomEvent("zoomDidClear"));
-        }, duration + 50);
     }
 }
 customElements.define('zoom-panel', ZoomPanel);
