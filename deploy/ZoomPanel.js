@@ -124,12 +124,10 @@ class ZoomPanel extends HTMLElement {
         scale = Math.floor(scale * roundFactor) / roundFactor;
         if ((this._scale / scale) > 1.8)
             debugger;
-        console.log('SSS', this._scale, scale);
         this.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
         this._translation.x = x;
         this._translation.y = y;
         this._scale = scale;
-        console.log("setTransform", this.style.transform);
     }
     constructor() {
         super();
@@ -199,7 +197,8 @@ class ZoomPanel extends HTMLElement {
         this.addEventListener("wheel", this.handleMouseWheelCapture, { capture: true });
         document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, { capture: true });
         this.addEventListener("transitionend", e => {
-            console.info("transition ended", this.translation, this.scale);
+            if (this._debugElement)
+                console.info("transition ended", this.translation, this.scale);
             this.style.willChange = "";
             if (this.scale == 1 &&
                 this.translation.x == 0 &&
@@ -304,7 +303,8 @@ class ZoomPanel extends HTMLElement {
         }
     }
     handlePointerMoveCapture(e) {
-        console.log("manipulationallowed " + this.manipulationAllowed, "mode: " + this.mode);
+        if (this._debugElement)
+            console.log("manipulationallowed " + this.manipulationAllowed, "mode: " + this.mode);
         if (!this.manipulationAllowed)
             return;
         if (e.pointerType == "pen" && this.ignoreStylus)
@@ -542,7 +542,8 @@ class ZoomPanel extends HTMLElement {
         this.dispatchEvent(new TransformationEvent("manipulationEnd"));
     }
     gestureWillBegin(gesture, e) {
-        console.info("GestureWillBegin", gesture, e);
+        if (this._debugElement)
+            console.info("GestureWillBegin", gesture, e);
         this.interruptTransitions();
         this.translationAtGestureStart.x = this.translation.x;
         this.translationAtGestureStart.y = this.translation.y;
@@ -554,7 +555,8 @@ class ZoomPanel extends HTMLElement {
     interruptTransitions() {
         const currentAnimations = this.getAnimations();
         if (currentAnimations.length) {
-            console.log("interrupt transition while transform is", this.style.transform);
+            if (this._debugElement)
+                console.log("interrupt transition while transform is", this.style.transform);
             currentAnimations.forEach(a => a.pause());
             let matrixString = this.computedStyle.getPropertyValue("transform");
             if (matrixString.includes("matrix")) {
@@ -562,22 +564,26 @@ class ZoomPanel extends HTMLElement {
                 this.setTransform(transform.translate.x, transform.translate.y, transform.scale);
             }
             else {
-                console.info("Transformation is not a matrix");
+                console.warn("Transformation is not a matrix");
             }
             currentAnimations.forEach(a => a.cancel());
             this.style.transition = "none";
         }
         else {
-            console.info("No animations to interrupt");
+            if (this._debugElement)
+                console.info("No animations to interrupt");
         }
-        console.log("transition now", this.style.transform);
+        if (this._debugElement)
+            console.log("transition now", this.style.transform);
     }
     gestureWillEnd(gesture, e) {
-        console.info("gestureWillEnd", gesture, e);
+        if (this._debugElement)
+            console.info("gestureWillEnd", gesture, e);
         this.dispatchEvent(new TransformationEvent("manipulationWillEnd", e));
     }
     gestureDidEnd(gesture, e) {
-        console.info("GestureDidEnd", gesture, e);
+        if (this._debugElement)
+            console.info("GestureDidEnd", gesture, e);
     }
     handleManipulationEnd(e) {
         if (this.pointers.length == 0) {
@@ -888,7 +894,8 @@ class ZoomPanel extends HTMLElement {
         this.pinchTo(scale, centerOn.x, centerOn.y, animate, center, time, easing);
     }
     clearManipulation() {
-        console.log("willClearManipulation");
+        if (this._debugElement)
+            console.log("willClearManipulation");
         this.pointers.length = 0;
         switch (this.mode) {
             case "pinch": this.pinchEnd();

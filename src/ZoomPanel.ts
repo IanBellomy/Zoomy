@@ -306,7 +306,6 @@ class ZoomPanel extends HTMLElement{
         scale = Math.floor(scale*roundFactor)/roundFactor;
 
         if((this._scale / scale) > 1.8) debugger;
-        console.log('SSS',this._scale,scale)
 
         this.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
 
@@ -315,7 +314,6 @@ class ZoomPanel extends HTMLElement{
         this._translation.y = y
         this._scale         = scale;
 
-        console.log("setTransform",this.style.transform)
     }
 
     constructor(){
@@ -381,7 +379,7 @@ class ZoomPanel extends HTMLElement{
 
         // Transition listeners
         this.addEventListener("transitionend",e=>{
-            console.info("transition ended",this.translation,this.scale)
+            if(this._debugElement) console.info("transition ended",this.translation,this.scale)
             // Force browser to re-render at new scale
             this.style.willChange = ""
 
@@ -527,7 +525,7 @@ class ZoomPanel extends HTMLElement{
     }
 
     handlePointerMoveCapture(e:PointerEvent){
-        console.log(
+        if(this._debugElement) console.log(
             "manipulationallowed " +this.manipulationAllowed,
             "mode: " + this.mode
         )
@@ -889,7 +887,7 @@ class ZoomPanel extends HTMLElement{
         /** The event where a gesture was detected */
         e:PointerEvent,
     ){
-        console.info("GestureWillBegin",gesture,e)
+        if(this._debugElement) console.info("GestureWillBegin",gesture,e)
 
         // if(this.clearZoomTimeoutID) clearTimeout(this.clearZoomTimeoutID)
 
@@ -914,7 +912,7 @@ class ZoomPanel extends HTMLElement{
     private interruptTransitions(){
         const currentAnimations = this.getAnimations()
         if(currentAnimations.length){
-            console.log("interrupt transition while transform is",this.style.transform)
+            if(this._debugElement) console.log("interrupt transition while transform is",this.style.transform)
             currentAnimations.forEach(a=>a.pause());
             let matrixString = this.computedStyle.getPropertyValue("transform")
             if(matrixString.includes("matrix")){
@@ -925,22 +923,22 @@ class ZoomPanel extends HTMLElement{
                     transform.scale,
                 )
             }else{
-                console.info("Transformation is not a matrix")
+                console.warn("Transformation is not a matrix")
             }
             currentAnimations.forEach(a=>a.cancel());
             this.style.transition = "none"
         }else{
-            console.info("No animations to interrupt")
+            if(this._debugElement) console.info("No animations to interrupt")
         }
 
-        console.log("transition now",this.style.transform)
+        if(this._debugElement) console.log("transition now",this.style.transform)
     }
 
     private gestureWillEnd(
         gesture:GestureType,
         e?:PointerEvent|WheelEvent
     ){
-        console.info("gestureWillEnd",gesture,e)
+        if(this._debugElement) console.info("gestureWillEnd",gesture,e)
         this.dispatchEvent(new TransformationEvent("manipulationWillEnd",e))
     }
 
@@ -952,7 +950,7 @@ class ZoomPanel extends HTMLElement{
         gesture:GestureType,
         e?:PointerEvent|WheelEvent,
     ){
-        console.info("GestureDidEnd",gesture,e)
+        if(this._debugElement) console.info("GestureDidEnd",gesture,e)
         // this.dispatchEvent(new GestureEvent("manipulationEnd",e))
     }
 
@@ -1460,7 +1458,7 @@ class ZoomPanel extends HTMLElement{
      * Any current pointer-touches on screen become dead to us.
      * */
     clearManipulation(){
-        console.log("willClearManipulation");
+        if(this._debugElement) console.log("willClearManipulation");
         this.pointers.length = 0;
         switch(this.mode){
             case "pinch": this.pinchEnd();
