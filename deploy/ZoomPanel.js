@@ -81,7 +81,6 @@ class ZoomPanel extends HTMLElement {
     set manipulationAllowed(val) {
         this._manipulationAllowed = val;
         if (!val) {
-            debugger;
             this.pointers.length = 0;
             if (this.gesturing) {
                 switch (this.mode) {
@@ -123,10 +122,14 @@ class ZoomPanel extends HTMLElement {
         x = Math.floor(x * roundFactor) / roundFactor;
         y = Math.floor(y * roundFactor) / roundFactor;
         scale = Math.floor(scale * roundFactor) / roundFactor;
+        if ((this._scale / scale) > 1.8)
+            debugger;
+        console.log('SSS', this._scale, scale);
         this.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
         this._translation.x = x;
         this._translation.y = y;
         this._scale = scale;
+        console.log("setTransform", this.style.transform);
     }
     constructor() {
         super();
@@ -153,7 +156,7 @@ class ZoomPanel extends HTMLElement {
         this.lastPointTime = undefined;
         this.lastPointPos = { x: 0, y: 0 };
         this.doubleTapTime = 300;
-        this.centerOnDoubleTap = false;
+        this.centerOnDoubleTap = true;
         this.mouseWheelTimeoutID = undefined;
         this._manipulationAllowed = true;
         this.resizeObserver = ResizeObserver ?
@@ -161,6 +164,14 @@ class ZoomPanel extends HTMLElement {
                 this._handleResize(e);
             })
             : null;
+        this.debugPinch = {
+            x: 0,
+            y: 0,
+            r: 0,
+            ix: 0,
+            iy: 0,
+            ir: 0
+        };
         this._cachedViewport = this.viewport;
         this._handleResize = this._handleResize.bind(this);
         this._flushCachedBoundingRect = this._flushCachedBoundingRect.bind(this);
@@ -228,7 +239,6 @@ class ZoomPanel extends HTMLElement {
     handlePointerDownCapture(e) {
         if (this.mode == "scroll") {
             clearTimeout(this.mouseWheelTimeoutID);
-            debugger;
         }
         if (!this.manipulationAllowed)
             return;
@@ -407,6 +417,15 @@ class ZoomPanel extends HTMLElement {
         this.gesturePositionChange.x = 0;
         this.gesturePositionChange.y = 0;
         this.pinchDistance = this.initialDistance;
+        this.initialScale = this.scale;
+        this.debugPinch.ix = this.initialCenter.x;
+        this.debugPinch.iy = this.initialCenter.y;
+        this.debugPinch.ir = this.initialDistance;
+        if (this._debugElement) {
+            console.log("pinchStart", this.debugPinch);
+            console.log("   initialDistance", this.initialDistance);
+            console.log("   bbox", this.untransformedBoundingClientRect);
+        }
         this.dispatchEvent(new TransformationEvent("pinchStart", e));
         this.dispatchEvent(new TransformationEvent("manipulationStart", e));
     }
@@ -422,9 +441,24 @@ class ZoomPanel extends HTMLElement {
         let absoluteScale = this.pinchScale * this.initialScale;
         let absoluteOffsetX = this.gesturePositionChange.x + this.translationAtGestureStart.x * this.pinchScale;
         let absoluteOffsetY = this.gesturePositionChange.y + this.translationAtGestureStart.y * this.pinchScale;
+        this.debugPinch.x = newCenterX;
+        this.debugPinch.y = newCenterY;
+        this.debugPinch.r = this.pinchDistance;
         this.setTransform(absoluteOffsetX, absoluteOffsetY, absoluteScale);
         this.origin.x = newCenterX;
         this.origin.y = newCenterY;
+        if (this._debugElement) {
+            console.log("pinchMove", this.debugPinch);
+            console.log("   pinchDistance", this.pinchDistance);
+            console.log("   initialDistance", this.initialDistance);
+            console.log("   (new) pinchScale", this.pinchScale);
+            console.log("   bbox", this.untransformedBoundingClientRect);
+            console.log("   gesturePositionChange.x", this.gesturePositionChange.x);
+            console.log("   gesturePositionChange.y", this.gesturePositionChange.y);
+            console.log("   absoluteScale", absoluteScale);
+            console.log("   absoluteOffsetX", absoluteOffsetX);
+            console.log("   absoluteOffsetY", absoluteOffsetY);
+        }
         this.dispatchEvent(new TransformationEvent("pinchChange", e));
     }
     panStart(e) {
@@ -514,16 +548,21 @@ class ZoomPanel extends HTMLElement {
         this.translationAtGestureStart.y = this.translation.y;
         this.style.willChange = "transform";
     }
+    get isTransitioning() {
+        return this.getAnimations().length != 0;
+    }
     interruptTransitions() {
         const currentAnimations = this.getAnimations();
         if (currentAnimations.length) {
+            console.log("interrupt transition while transform is", this.style.transform);
+            currentAnimations.forEach(a => a.pause());
             let matrixString = this.computedStyle.getPropertyValue("transform");
             if (matrixString.includes("matrix")) {
                 let transform = matrixStringToTransform(matrixString);
                 this.setTransform(transform.translate.x, transform.translate.y, transform.scale);
             }
             else {
-                console.info("Transformation is not");
+                console.info("Transformation is not a matrix");
             }
             currentAnimations.forEach(a => a.cancel());
             this.style.transition = "none";
@@ -531,6 +570,7 @@ class ZoomPanel extends HTMLElement {
         else {
             console.info("No animations to interrupt");
         }
+        console.log("transition now", this.style.transform);
     }
     gestureWillEnd(gesture, e) {
         console.info("gestureWillEnd", gesture, e);
@@ -722,8 +762,21 @@ class ZoomPanel extends HTMLElement {
                 let size = p.pointerType == "touch"
                     ? 100
                     : 20;
+                ctx.setLineDash([]);
                 ctx.strokeRect(p.clientX - size / 2, p.clientY - size / 2, size, size);
             });
+            if (this.mode == "pinch") {
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.ellipse(this.debugPinch.ix, this.debugPinch.iy, this.debugPinch.ir / 2, this.debugPinch.ir / 2, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.setLineDash([2, 2]);
+                ctx.ellipse(this.debugPinch.x, this.debugPinch.y, this.debugPinch.r / 2, this.debugPinch.r / 2, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
             let viewport = this.viewport;
             viewportCheck.style.width = this.viewport.width + "px";
             viewportCheck.style.height = this.viewport.height + "px";

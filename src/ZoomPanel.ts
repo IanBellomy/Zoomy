@@ -225,7 +225,7 @@ class ZoomPanel extends HTMLElement{
     private lastPointPos:Point = {x:0,y:0}
     /** Maximum time that can pass between taps for two taps to count as a double tap */
     private doubleTapTime = 300
-    public centerOnDoubleTap = false
+    public centerOnDoubleTap = true
     /** Used for the mouseWheelTimeout complete */
     private mouseWheelTimeoutID = undefined
 
@@ -242,7 +242,6 @@ class ZoomPanel extends HTMLElement{
     set manipulationAllowed(val){
         this._manipulationAllowed = val;
         if(!val){
-            debugger;
             this.pointers.length = 0;
             if(this.gesturing){
                 switch(this.mode){
@@ -298,18 +297,25 @@ class ZoomPanel extends HTMLElement{
     }
 
     private setTransform(x:number,y:number,scale:number){
+
         // There may be an issue in webkit transition that can lead to a flash of no visuals...
         // Not sure what it is exactly, but rounding target values seems to help...
         let roundFactor = 1000;
         x = Math.floor(x*roundFactor)/roundFactor;
         y = Math.floor(y*roundFactor)/roundFactor;
         scale = Math.floor(scale*roundFactor)/roundFactor;
+
+        if((this._scale / scale) > 1.8) debugger;
+        console.log('SSS',this._scale,scale)
+
         this.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
 
         // cache
         this._translation.x = x
         this._translation.y = y
         this._scale         = scale;
+
+        console.log("setTransform",this.style.transform)
     }
 
     constructor(){
@@ -433,7 +439,7 @@ class ZoomPanel extends HTMLElement{
     handlePointerDownCapture(e:PointerEvent){
         if(this.mode == "scroll"){
             clearTimeout(this.mouseWheelTimeoutID)
-            debugger;
+            // debugger;
         }
         if(!this.manipulationAllowed) return;
         if(e.pointerType == "pen" && this.ignoreStylus) return;
@@ -680,9 +686,20 @@ class ZoomPanel extends HTMLElement{
         this.gesturePositionChange.x = 0
         this.gesturePositionChange.y = 0
         this.pinchDistance = this.initialDistance
+        this.initialScale = this.scale;
 
+        this.debugPinch.ix = this.initialCenter.x
+        this.debugPinch.iy = this.initialCenter.y
+        this.debugPinch.ir = this.initialDistance
+
+        if(this._debugElement){
+            console.log("pinchStart",this.debugPinch)
+            console.log("   initialDistance",this.initialDistance)
+            console.log("   bbox",this.untransformedBoundingClientRect)
+        }
         this.dispatchEvent(new TransformationEvent("pinchStart",e))
         this.dispatchEvent(new TransformationEvent("manipulationStart",e))
+
     }
 
     /**
@@ -708,6 +725,10 @@ class ZoomPanel extends HTMLElement{
         let absoluteOffsetY     = this.gesturePositionChange.y + this.translationAtGestureStart.y * this.pinchScale
 
 
+        this.debugPinch.x = newCenterX
+        this.debugPinch.y = newCenterY
+        this.debugPinch.r = this.pinchDistance
+
         // do transform
         this.setTransform(absoluteOffsetX,absoluteOffsetY,absoluteScale);
 
@@ -715,7 +736,35 @@ class ZoomPanel extends HTMLElement{
         this.origin.x = newCenterX;
         this.origin.y = newCenterY;
 
+        if(this._debugElement){
+            console.log("pinchMove",this.debugPinch)
+            console.log("   pinchDistance",this.pinchDistance)
+            console.log("   initialDistance",this.initialDistance)
+            console.log("   (new) pinchScale",this.pinchScale)
+            console.log("   bbox",this.untransformedBoundingClientRect)
+            console.log("   gesturePositionChange.x",this.gesturePositionChange.x)
+            console.log("   gesturePositionChange.y",this.gesturePositionChange.y)
+
+            console.log("   absoluteScale",absoluteScale)
+            console.log("   absoluteOffsetX",absoluteOffsetX)
+            console.log("   absoluteOffsetY",absoluteOffsetY)
+        }
         this.dispatchEvent(new TransformationEvent("pinchChange",e))
+    }
+
+    private debugPinch = {
+        /** Current pinch center X */
+        x:0,
+        /** Current pinch center Y */
+        y:0,
+        /** Current pinch radius */
+        r:0,
+        /** Current pinch initial center x */
+        ix:0,
+        /** Current pinch initial center y */
+        iy:0,
+        /** Current pinch initial radius */
+        ir:0
     }
 
     /**
@@ -855,12 +904,18 @@ class ZoomPanel extends HTMLElement{
         this.style.willChange = "transform"
     }
 
+    get isTransitioning(){
+        return this.getAnimations().length != 0
+    }
+
     /**
      * Cancel any ongoing transitions and apply the in-progress transform.
      */
     private interruptTransitions(){
         const currentAnimations = this.getAnimations()
         if(currentAnimations.length){
+            console.log("interrupt transition while transform is",this.style.transform)
+            currentAnimations.forEach(a=>a.pause());
             let matrixString = this.computedStyle.getPropertyValue("transform")
             if(matrixString.includes("matrix")){
                 let transform = matrixStringToTransform(matrixString);
@@ -870,13 +925,15 @@ class ZoomPanel extends HTMLElement{
                     transform.scale,
                 )
             }else{
-                console.info("Transformation is not")
+                console.info("Transformation is not a matrix")
             }
             currentAnimations.forEach(a=>a.cancel());
             this.style.transition = "none"
         }else{
             console.info("No animations to interrupt")
         }
+
+        console.log("transition now",this.style.transform)
     }
 
     private gestureWillEnd(
@@ -1181,6 +1238,7 @@ class ZoomPanel extends HTMLElement{
                 let size = p.pointerType == "touch"
                     ? 100
                     : 20
+                ctx.setLineDash([]);
                 ctx.strokeRect(
                     p.clientX - size/2,
                     p.clientY - size/2,
@@ -1188,6 +1246,37 @@ class ZoomPanel extends HTMLElement{
                 )
             })
 
+            if(this.mode == "pinch"){
+                ctx.lineWidth = 1;
+                // initial pinch
+                ctx.beginPath()
+                ctx.setLineDash([5, 5]);
+                ctx.ellipse(
+                    this.debugPinch.ix,
+                    this.debugPinch.iy,
+                    this.debugPinch.ir/2,
+                    this.debugPinch.ir/2,
+                    0,0,Math.PI*2
+                )
+                ctx.stroke()
+
+                ctx.lineWidth = 2;
+                // current pinch
+                ctx.beginPath()
+                ctx.setLineDash([2, 2]);
+                ctx.ellipse(
+                    this.debugPinch.x,
+                    this.debugPinch.y,
+                    this.debugPinch.r/2,
+                    this.debugPinch.r/2,
+                    0,0,Math.PI*2
+                )
+                ctx.stroke()
+
+            }
+
+
+            // place viewport
             let viewport = this.viewport;
             viewportCheck.style.width = this.viewport.width + "px";
             viewportCheck.style.height = this.viewport.height + "px";
