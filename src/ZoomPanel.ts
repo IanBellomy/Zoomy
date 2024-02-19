@@ -305,8 +305,6 @@ class ZoomPanel extends HTMLElement{
         y = Math.floor(y*roundFactor)/roundFactor;
         scale = Math.floor(scale*roundFactor)/roundFactor;
 
-        if((this._scale / scale) > 1.8) debugger;
-
         this.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
 
         // cache
