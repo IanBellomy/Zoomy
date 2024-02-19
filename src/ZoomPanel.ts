@@ -375,6 +375,11 @@ class ZoomPanel extends HTMLElement{
 
         document.addEventListener("visibilitychange", this.handleMainWindowVisibilityChange, {capture:true});
 
+
+        this.addEventListener("transitionstart",(e)=>{
+            this.dispatchEvent(new TransformationEvent("manipulationStart"))
+        })
+
         // Transition listeners
         this.addEventListener("transitionend",e=>{
             if(this._debugElement) console.info("transition ended",this.translation,this.scale)
@@ -401,9 +406,9 @@ class ZoomPanel extends HTMLElement{
                 this.dispatchEvent(new CustomEvent("zoomDidClear"))
             }
         })
+
         this.addEventListener("transitioncancel",e=>{
-            // console.info("t cancel")
-            // this.style.willChange = ""
+            // should we dispatch a manipulation end or similar?...
         })
 
         //
@@ -545,7 +550,6 @@ class ZoomPanel extends HTMLElement{
             this.pinchEnd(e)
             this.panStart(e)
         }else if(this.pointers.length == 1 && this.mode == "pan"){
-            // this.dispatchEvent(new CustomEvent("manipulationStart"))         // ?!
             this.panMove(e)
         }
 
@@ -746,6 +750,7 @@ class ZoomPanel extends HTMLElement{
             console.log("   absoluteOffsetY",absoluteOffsetY)
         }
         this.dispatchEvent(new TransformationEvent("pinchChange",e))
+        this.dispatchEvent(new TransformationEvent("manipulationStart",e))
     }
 
     private debugPinch = {
@@ -879,7 +884,9 @@ class ZoomPanel extends HTMLElement{
         this.dispatchEvent(new TransformationEvent("manipulationEnd"))
     }
 
-    /** Called before a pan or pinch begins while not doing either */
+    /**
+     * Called immediately before a pan or pinch begins
+     * */
     private gestureWillBegin(
         gesture:GestureType,
         /** The event where a gesture was detected */
@@ -909,6 +916,10 @@ class ZoomPanel extends HTMLElement{
      */
     private interruptTransitions(){
         const currentAnimations = this.getAnimations()
+
+        this._targetChild = null;
+        this._targetFrame = null;
+
         if(currentAnimations.length){
             if(this._debugElement) console.log("interrupt transition while transform is",this.style.transform)
             currentAnimations.forEach(a=>a.pause());
@@ -1118,6 +1129,8 @@ class ZoomPanel extends HTMLElement{
         this.initialScale    *= this.pinchScale
         this.translationAtGestureStart.x  = this.translationAtGestureStart.x * this.pinchScale + this.gesturePositionChange.x
         this.translationAtGestureStart.y  = this.translationAtGestureStart.y * this.pinchScale + this.gesturePositionChange.y
+
+        // this.dispatchEvent(new TransformationEvent("manipulationStart"))
     }
 
     _debugElement?:HTMLDivElement
@@ -1328,7 +1341,10 @@ class ZoomPanel extends HTMLElement{
         return bbox;
     }
 
-    frame(
+    /** The rect we're currently attempting to frame */
+    private _targetFrame = null as Rect|null
+
+    frameRect(
         rect:Rect,
         animate = true,
         roundFactor = 100
@@ -1337,6 +1353,7 @@ class ZoomPanel extends HTMLElement{
             console.error("frame(rect:Rect,animate = true) rect param must be a Rect! Received",rect)
             return;
         }
+        this._targetChild = null;
 
         let x = rect.left + rect.width/2;
         let y = rect.top + rect.height/2;
@@ -1349,6 +1366,14 @@ class ZoomPanel extends HTMLElement{
         scale = Math.floor(scale*roundFactor)/roundFactor;
 
         this.pinchTo(scale,x,y,animate,true);
+
+        this._targetFrame = rect; // pinchTo calls frame which clears _targetFrame
+    }
+
+    /** The child element we're currently attempting to frame */
+    private _targetChild = null as Element|null;
+    get targetChild(){
+        return this._targetChild
     }
 
     frameChild(
@@ -1408,7 +1433,8 @@ class ZoomPanel extends HTMLElement{
         bbox.height += padding.top + padding.bottom
         bbox.width += padding.left + padding.right
 
-        this.frame(bbox,animate,roundFactor);
+        this.frameRect(bbox,animate,roundFactor);
+        this._targetChild = el;
     }
 
     /**
@@ -1475,7 +1501,11 @@ class ZoomPanel extends HTMLElement{
      * @param ease
      */
     clearZoom(duration?:number, ease?:string){
-        // this.clearManipulation()?; // Issue here. If we switch from an animated pinch to a pan, clear manipulation will clear pointers we're about to use...
+        // this.clearManipulation()?; // Don't do this. If we switch from an animated pinch to a pan, clear manipulation will clear pointers we're about to use...
+
+        this._targetChild = null;
+        this._targetFrame = null;
+
         if(!this.isTransformed){
             this.dispatchEvent(new CustomEvent("zoomDidClear"))
             return;
@@ -1485,6 +1515,7 @@ class ZoomPanel extends HTMLElement{
         this.style.transition = `all ${duration}ms`
         if(ease) this.style.transitionTimingFunction = ease;
         this.setTransform(0,0,1)
+        // this.dispatchEvent(new TransformationEvent("manipulationStart"))
     }
 
 
