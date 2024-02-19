@@ -1,3 +1,11 @@
+/**
+ * TODO:
+ * Consolidate gesture info into pinch/pain objects etc.
+ * manipulationStartEnd >>> transformStartEnd
+ * clearZoom should use frameChild(this) but frameChild/Rect should accept an easing equation
+ * There's too much overlap between doPinch and pinchTo :P
+ */
+
 interface Point{
     x:number,
     y:number
@@ -990,8 +998,6 @@ class ZoomPanel extends HTMLElement{
             this.doPinch(2,x - this.untransformedBoundingClientRect.left, y - this.untransformedBoundingClientRect.top,true,this.centerOnDoubleTap)
         }
     }
-
-
 
     /** aka. scale. */
     get zoom(){
